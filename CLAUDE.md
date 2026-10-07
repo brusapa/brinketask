@@ -59,6 +59,7 @@ Tool versions: Go 1.27.1, golangci-lint v2.14.0, GNU Make.
 | `make build` | Static binary in `bin/brinketask` |
 | `make all` | lint, test and build: run before calling anything done |
 | `make image` | Builds the application image `localhost/brinketask:dev` from `deploy/Dockerfile` with Podman |
+| `make dev` / `make dev-down` | Starts / stops PostgreSQL and the app (`deploy/compose.dev.yaml`) on `http://127.0.0.1:8080`. Needs a compose provider for `podman compose` (podman-compose or docker-compose) |
 
 Integration tests start a throwaway PostgreSQL (`internal/testdb`) through testcontainers, which needs a Docker-compatible API. With Podman:
 
@@ -66,4 +67,11 @@ Integration tests start a throwaway PostgreSQL (`internal/testdb`) through testc
 systemctl --user enable --now podman.socket
 export DOCKER_HOST=unix://$XDG_RUNTIME_DIR/podman/podman.sock
 export TESTCONTAINERS_RYUK_CONTAINER_PRIVILEGED=true   # the cleanup container needs it under Podman
+```
+
+To run the server on the host instead of in a container, start only the database and point the binary at it:
+
+```sh
+podman compose -f deploy/compose.dev.yaml up -d db
+DATABASE_URL='postgres://brinketask:brinketask@127.0.0.1:5432/brinketask?sslmode=disable' go run ./cmd/brinketask
 ```

@@ -1,0 +1,49 @@
+# Development environment: PostgreSQL plus the application built from
+# deploy/Dockerfile. Not for production (phase 6 documents deployment).
+#
+#   make dev        build and start both services (http://127.0.0.1:8080)
+#   make dev-down   stop them; the database volume is kept
+#
+# Ports bind to 127.0.0.1 only. The credentials below are fixed development
+# values for a database that is only reachable from this machine; they are
+# not secrets and must never be reused elsewhere.
+name: brinketask-dev
+
+services:
+  db:
+    # Keep in step with internal/testdb.Image.
+    image: docker.io/library/postgres:18.6-alpine3.24
+    environment:
+      POSTGRES_USER: brinketask
+      POSTGRES_PASSWORD: brinketask
+      POSTGRES_DB: brinketask
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      # Since PostgreSQL 18 the image keeps its data in a versioned
+      # subdirectory of /var/lib/postgresql, so the volume mounts the parent.
+      - db-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "brinketask", "-d", "brinketask"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  app:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    environment:
+      DATABASE_URL: postgres://brinketask:brinketask@db:5432/brinketask?sslmode=disable
+      LOG_LEVEL: debug
+    ports:
+      - "127.0.0.1:8080:8080"
+    # Same restrictions as production (SPEC section 10).
+    read_only: true
+    cap_drop: [ALL]
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  db-data:

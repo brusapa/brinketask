@@ -10,7 +10,7 @@ IMAGE ?= localhost/brinketask:dev
 # The race detector needs cgo and a C compiler; set GO_TEST_FLAGS= to skip it.
 GO_TEST_FLAGS ?= -race
 
-.PHONY: all generate check-generated lint test build image clean
+.PHONY: all generate check-generated lint test build image dev dev-down clean
 
 all: lint test build
 
@@ -35,6 +35,14 @@ build:
 
 image:
 	$(CONTAINER_ENGINE) build -f deploy/Dockerfile -t $(IMAGE) .
+
+DEV_COMPOSE := $(CONTAINER_ENGINE) compose -f deploy/compose.dev.yaml
+
+dev:
+	$(DEV_COMPOSE) up --build
+
+dev-down:
+	$(DEV_COMPOSE) down
 
 clean:
 	rm -rf bin
