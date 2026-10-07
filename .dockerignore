@@ -1,0 +1,6 @@
+# Build context filter for `podman build` / `docker build`. The Dockerfile
+# copies only what it needs, so this mainly keeps the context small.
+.git
+bin
+*.local
+.env

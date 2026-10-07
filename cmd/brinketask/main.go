@@ -13,6 +13,11 @@ import (
 	"syscall"
 	"time"
 
+	// Embeds the IANA time zone database (about 450 KB) in the binary. The
+	// distroless image has no /usr/share/zoneinfo, and time zones such as
+	// users.timezone and due_tz must resolve everywhere.
+	_ "time/tzdata"
+
 	"github.com/brusapa/brinketask/internal/config"
 	"github.com/brusapa/brinketask/internal/health"
 	"github.com/brusapa/brinketask/internal/httpapi"

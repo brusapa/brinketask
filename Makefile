@@ -3,10 +3,14 @@
 
 GOLANGCI_LINT_VERSION := v2.14.0
 
+# Container engine for `make image`. CI and development use Podman.
+CONTAINER_ENGINE ?= podman
+IMAGE ?= localhost/brinketask:dev
+
 # The race detector needs cgo and a C compiler; set GO_TEST_FLAGS= to skip it.
 GO_TEST_FLAGS ?= -race
 
-.PHONY: all generate check-generated lint test build clean
+.PHONY: all generate check-generated lint test build image clean
 
 all: lint test build
 
@@ -28,6 +32,9 @@ test:
 
 build:
 	CGO_ENABLED=0 go build -trimpath -o bin/brinketask ./cmd/brinketask
+
+image:
+	$(CONTAINER_ENGINE) build -f deploy/Dockerfile -t $(IMAGE) .
 
 clean:
 	rm -rf bin
