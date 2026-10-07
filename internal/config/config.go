@@ -72,7 +72,10 @@ func secret(lookup LookupFunc, name string) (string, error) {
 	case hasValue:
 		return value, nil
 	case hasPath:
-		content, err := os.ReadFile(path)
+		// G304 warns about reading a path held in a variable. This path is
+		// set by the operator who deploys the server, not by a request.
+		content, err := os.ReadFile(path) //nolint:gosec // G304: operator-supplied path
+
 		if err != nil {
 			// The error text carries only the path, never the file content.
 			return "", fmt.Errorf("config: %s_FILE: %w", name, err)

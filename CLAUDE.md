@@ -48,4 +48,11 @@ CLAUDE.md
 
 ## Commands
 
-To be defined in phase 0. Document here the commands for lint, tests, code generation and local startup as soon as they exist.
+Tool versions: Go 1.27.1, golangci-lint v2.14.0, GNU Make.
+
+| Command | What it does |
+|---|---|
+| `make lint` | golangci-lint (config in `.golangci.yml`); fails if the linter version differs |
+| `make test` | `go test -race ./...`; `GO_TEST_FLAGS=` drops `-race` when no C compiler is available |
+| `make build` | Static binary in `bin/brinketask` |
+| `make all` | lint, test and build: run before calling anything done |
