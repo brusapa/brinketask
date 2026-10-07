@@ -60,6 +60,7 @@ Tool versions: Go 1.27.1, golangci-lint v2.14.0, GNU Make.
 | `make all` | lint, test and build: run before calling anything done |
 | `make image` | Builds the application image `localhost/brinketask:dev` from `deploy/Dockerfile` with Podman |
 | `make dev` / `make dev-down` | Starts / stops PostgreSQL and the app (`deploy/compose.dev.yaml`) on `http://127.0.0.1:8080`. Needs a compose provider for `podman compose` (podman-compose or docker-compose) |
+| `deploy/smoke-test.sh` | Runs the built image read-only next to PostgreSQL and waits for `GET /healthz` = 200 (CI runs it after `make image`) |
 
 Integration tests start a throwaway PostgreSQL (`internal/testdb`) through testcontainers, which needs a Docker-compatible API. With Podman:
 
@@ -75,3 +76,5 @@ To run the server on the host instead of in a container, start only the database
 podman compose -f deploy/compose.dev.yaml up -d db
 DATABASE_URL='postgres://brinketask:brinketask@127.0.0.1:5432/brinketask?sslmode=disable' go run ./cmd/brinketask
 ```
+
+CI (`.github/workflows/ci.yml`, GitHub Actions) runs `make check-generated`, golangci-lint, `make test` and `make build`, then `make image` and `deploy/smoke-test.sh`. Actions are pinned by commit SHA.
