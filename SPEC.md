@@ -3,7 +3,7 @@
 Status: approved. Date: 2026-10-07.
 Project name: `brinketask`.
 
-This document and `openapi.yaml` are the source of truth; `DESIGN.md` is the visual reference for the web client. If code and specification disagree, one of them is fixed in the same change; the discrepancy is never left in place.
+This document and `api/openapi.yaml` are the source of truth; `DESIGN.md` is the visual reference for the web client. If code and specification disagree, one of them is fixed in the same change; the discrepancy is never left in place.
 
 ## 1. Goal and scope
 
@@ -249,7 +249,7 @@ Any other part is rejected with 422. The start of the series (`DTSTART`) is the 
 
 ## 8. API
 
-Full detail in `openapi.yaml`. Conventions:
+Full detail in `api/openapi.yaml`. Conventions:
 
 - Base `/api/v1`. JSON. Timestamps RFC 3339 in UTC; dates `YYYY-MM-DD`; times `HH:MM`.
 - Errors in `application/problem+json` format (RFC 9457) with a stable `code` field for the client.
@@ -296,7 +296,7 @@ The section is fed by completion records, not by tasks with `status = done`, so 
 - Undo: temporary toast after deleting or completing, which calls restore or `uncomplete`.
 - Drag to reorder; move tasks between lists.
 - The client detects the browser's time zone and offers to update the profile if it differs.
-- Types and HTTP client generated from `openapi.yaml`; never written by hand.
+- Types and HTTP client generated from `api/openapi.yaml`; never written by hand.
 - UI language: English by default and the only language in V1. Every user-facing string goes through an i18n layer with message catalogs from day one; no hard-coded literals in components. Dates and times are formatted with the platform's locale-aware APIs. Spanish as a selectable language is V2.
 
 ## 10. Non-functional requirements
@@ -316,7 +316,7 @@ The section is fed by completion records, not by tasks with `status = done`, so 
 - **Completed section**: `GET /completions` returns a completed occurrence of a recurring task, omits skipped records and deleted tasks, and respects the time and scope filters.
 - **Sync**: concurrent writes leave no change outside the cursor; tombstones appear; expired cursor → 410.
 - **Authorization**: a user cannot read or modify another user's resources (404).
-- **Contract**: real responses validate against `openapi.yaml`.
+- **Contract**: real responses validate against `api/openapi.yaml`.
 - **Integration** against a real PostgreSQL, not a mock.
 - **End-to-end**, minimal, in a browser: log in (test OIDC provider), create, complete, undo, receive a reminder.
 

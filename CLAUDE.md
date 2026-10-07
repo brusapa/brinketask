@@ -5,14 +5,14 @@ Project: `brinketask`. Self-hosted tasks and reminders application.
 ## Sources of truth
 
 1. `SPEC.md`: behaviour, data model and design decisions (D-xx, R-x).
-2. `openapi.yaml`: API contract.
+2. `api/openapi.yaml`: API contract.
 3. `DESIGN.md`: layout, metrics and colour tokens of the web client. On behaviour, `SPEC.md` wins.
 
 Read them before any change. If a task requires departing from them, **stop and ask**; do not improvise. If the change is approved, update the document in the same commit as the code.
 
 ## Rules
 
-- **OpenAPI first.** To change the API, edit `openapi.yaml` and regenerate the code. Generated files are never edited by hand and no routes are added outside the contract.
+- **OpenAPI first.** To change the API, edit `api/openapi.yaml` and regenerate the code. Generated files are never edited by hand and no routes are added outside the contract, except the operational routes listed in its description (`/auth/*`, `/healthz`, `/metrics` and the web client's static files).
 - **Scope.** Implement only what the current phase asks for (`SPEC.md`, section 12). Nothing from the "Out of V1" list. Do not add features, configuration options or abstractions nobody asked for.
 - **Tests are mandatory.** Every behaviour change arrives with its tests in the same commit. Section 11 of `SPEC.md` lists the minimum cases. A test is never disabled, skipped or loosened to make it pass; if a test looks wrong, explain why and ask.
 - **Injected clock.** Domain code (recurrence, reminders, sessions) never calls `time.Now()`; it receives a clock. Tests use a fixed clock.
