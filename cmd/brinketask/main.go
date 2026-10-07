@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/brusapa/brinketask/internal/config"
+	"github.com/brusapa/brinketask/internal/storage"
 )
 
 // shutdownTimeout bounds how long in-flight requests may run after SIGTERM.
@@ -39,6 +40,17 @@ func run() error {
 	// ctx is cancelled on SIGINT (Ctrl+C) or SIGTERM (container stop).
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	pool, err := storage.Open(ctx, cfg.DatabaseURL)
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+
+	// Migrations run before the server accepts requests (SPEC section 10).
+	if err := storage.Migrate(ctx, pool, logger); err != nil {
+		return err
+	}
 
 	mux := http.NewServeMux()
 

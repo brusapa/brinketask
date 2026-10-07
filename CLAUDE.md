@@ -56,3 +56,11 @@ Tool versions: Go 1.27.1, golangci-lint v2.14.0, GNU Make.
 | `make test` | `go test -race ./...`; `GO_TEST_FLAGS=` drops `-race` when no C compiler is available |
 | `make build` | Static binary in `bin/brinketask` |
 | `make all` | lint, test and build: run before calling anything done |
+
+Integration tests start a throwaway PostgreSQL (`internal/testdb`) through testcontainers, which needs a Docker-compatible API. With Podman:
+
+```sh
+systemctl --user enable --now podman.socket
+export DOCKER_HOST=unix://$XDG_RUNTIME_DIR/podman/podman.sock
+export TESTCONTAINERS_RYUK_CONTAINER_PRIVILEGED=true   # the cleanup container needs it under Podman
+```
