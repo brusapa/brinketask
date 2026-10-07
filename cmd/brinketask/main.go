@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/brusapa/brinketask/internal/config"
+	"github.com/brusapa/brinketask/internal/httpapi"
 	"github.com/brusapa/brinketask/internal/storage"
 )
 
@@ -53,6 +54,7 @@ func run() error {
 	}
 
 	mux := http.NewServeMux()
+	httpapi.Register(mux, httpapi.Server{}, logger)
 
 	server := &http.Server{
 		Addr:              cfg.ListenAddr,

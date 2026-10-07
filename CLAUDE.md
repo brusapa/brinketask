@@ -52,6 +52,8 @@ Tool versions: Go 1.27.1, golangci-lint v2.14.0, GNU Make.
 
 | Command | What it does |
 |---|---|
+| `make generate` | Regenerates code from `api/openapi.yaml` (oapi-codegen v2.8.0, pinned as a `go tool`) into `internal/httpapi/api.gen.go`. Generated files are committed |
+| `make check-generated` | Regenerates and fails if any `*.gen.go` file changed: run after editing the contract |
 | `make lint` | golangci-lint (config in `.golangci.yml`); fails if the linter version differs |
 | `make test` | `go test -race ./...`; `GO_TEST_FLAGS=` drops `-race` when no C compiler is available |
 | `make build` | Static binary in `bin/brinketask` |
