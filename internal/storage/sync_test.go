@@ -112,3 +112,35 @@ func TestSyncStateHasExactlyOneRow(t *testing.T) {
 		t.Error("inserting a second sync_state row succeeded, want a constraint violation")
 	}
 }
+
+func TestReserveSeqs(t *testing.T) {
+	ctx := context.Background()
+	pool := storagetest.NewPool(t)
+	q := dbgen.New(pool)
+
+	if _, err := q.NextSeq(ctx); err != nil {
+		t.Fatal(err)
+	}
+	last, err := q.ReserveSeqs(ctx, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 1 was taken by NextSeq, so the five reserved values are 2..6.
+	if last != 6 {
+		t.Errorf("ReserveSeqs(5) after one NextSeq = %d, want 6", last)
+	}
+	next, err := q.NextSeq(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next != 7 {
+		t.Errorf("NextSeq after the reservation = %d, want 7", next)
+	}
+	state, err := q.GetSyncState(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Seq != 7 || state.PurgedUpToSeq != 0 {
+		t.Errorf("sync_state = %+v, want seq 7 and nothing purged", state)
+	}
+}

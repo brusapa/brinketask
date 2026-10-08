@@ -9,6 +9,22 @@ import (
 	"context"
 )
 
+const getSyncState = `-- name: GetSyncState :one
+SELECT seq, purged_up_to_seq FROM sync_state
+`
+
+type GetSyncStateRow struct {
+	Seq           int64
+	PurgedUpToSeq int64
+}
+
+func (q *Queries) GetSyncState(ctx context.Context) (GetSyncStateRow, error) {
+	row := q.db.QueryRow(ctx, getSyncState)
+	var i GetSyncStateRow
+	err := row.Scan(&i.Seq, &i.PurgedUpToSeq)
+	return i, err
+}
+
 const nextSeq = `-- name: NextSeq :one
 UPDATE sync_state SET seq = seq + 1 RETURNING seq
 `
@@ -19,6 +35,21 @@ UPDATE sync_state SET seq = seq + 1 RETURNING seq
 // committed before seq N.
 func (q *Queries) NextSeq(ctx context.Context) (int64, error) {
 	row := q.db.QueryRow(ctx, nextSeq)
+	var seq int64
+	err := row.Scan(&seq)
+	return seq, err
+}
+
+const reserveSeqs = `-- name: ReserveSeqs :one
+UPDATE sync_state SET seq = seq + $1::bigint RETURNING seq
+`
+
+// Takes @n consecutive values of the counter at once and returns the last
+// one; the caller uses last-n+1 .. last. Same lock as NextSeq. A write that
+// touches many rows (deleting a list deletes its tasks) gives each row its
+// own seq this way with one statement.
+func (q *Queries) ReserveSeqs(ctx context.Context, n int64) (int64, error) {
+	row := q.db.QueryRow(ctx, reserveSeqs, n)
 	var seq int64
 	err := row.Scan(&seq)
 	return seq, err
