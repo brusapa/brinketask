@@ -16,7 +16,7 @@ Read them before any change. If a task requires departing from them, **stop and 
 - **Scope.** Implement only what the current phase asks for (`SPEC.md`, section 12). Nothing from the "Out of V1" list. Do not add features, configuration options or abstractions nobody asked for.
 - **Tests are mandatory.** Every behaviour change arrives with its tests in the same commit. Section 11 of `SPEC.md` lists the minimum cases. A test is never disabled, skipped or loosened to make it pass; if a test looks wrong, explain why and ask.
 - **Injected clock.** Domain code (recurrence, reminders, sessions) never calls `time.Now()`; it receives a clock. Tests use a fixed clock.
-- **Authorization.** Every data access is filtered by membership in `list_members`. Someone else's resource = 404.
+- **Authorization.** Every data access is filtered by membership in `list_members`. Someone else's resource = 404. The one exception: an idempotent creation whose `id` belongs to another user answers 409 (`SPEC.md`, D-23).
 - **Sync.** Every write to a syncable resource increments `version` and assigns a new `seq` within the same transaction (D-07). Deletion is always soft.
 - **Idempotency.** Creations and actions must be repeatable with no additional effect (D-04, D-10).
 - **Migrations.** Forward-only. A merged migration is never modified; add another one.

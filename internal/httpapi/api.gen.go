@@ -298,7 +298,9 @@ type CompletionEntryKind string
 
 // CompletionResult defines model for CompletionResult.
 type CompletionResult struct {
-	// Applied False when the call was a no-op (stale occurrence, repeated or unknown id).
+	// Applied False when the call was a no-op: a stale occurrence, or an unknown id on
+	// /uncomplete. A repeated `completion_id` on /complete or /skip answers true
+	// with the existing completion (SPEC D-24).
 	Applied    bool                          `json:"applied"`
 	Completion nullable.Nullable[Completion] `json:"completion,omitempty"`
 	Task       Task                          `json:"task"`

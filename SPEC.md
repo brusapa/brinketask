@@ -64,6 +64,21 @@ Each decision has an identifier so it can be cited in commits and reviews.
 | D-16 | Polling scheduler on PostgreSQL (`FOR UPDATE SKIP LOCKED`) | No additional dependencies |
 | D-17 | Domain code does not read the clock directly; it receives an injected clock | Deterministic tests for recurrence and reminders |
 | D-18 | A single image (Go binary with the web client embedded) | Same origin and minimal deployment |
+| D-19 | Only lists and tasks can be restored. Deleting a tag, checklist item or reminder is final for the user, but still a soft delete so it reaches other devices as a tombstone | Only lists and tasks have a trash; keeps the API small |
+| D-20 | Deleting a list sets `tasks.deleted_with_list_id` on the tasks it deletes; restoring the list restores only those | Tasks deleted earlier on their own stay in the trash |
+| D-21 | `sync_state.purged_up_to_seq` records the highest `seq` the purge has removed; a cursor below it answers 410 | `seq` carries no timestamp, so cursor age is measured against the purge |
+| D-22 | On a soft-deleted resource, `GET` and `PATCH` by id answer 404, a repeated `DELETE` answers 204 and `restore` is the only operation that acts on it. The trash is read with `?deleted=true` | Deleted resources behave as gone except for undo |
+| D-23 | Idempotent creation (D-04) with an `id` that exists: owned by the caller, alive or deleted, it answers 200 with the resource as it is (a deleted one is not revived); owned by another user, 409 `conflict` | A retry never fails or resurrects. A collision of client UUIDs cannot happen in practice, and 404 on a `POST` would mislead the client; this is the one exception to "someone else's resource = 404" |
+| D-24 | Repeating `complete` or `skip` with a known `completion_id` answers `applied: true` with the existing completion | A client retrying after a lost response must not read it as a stale occurrence |
+| D-25 | `PATCH status=open` is accepted only from `dropped` (409 otherwise); a completed task is reopened with `uncomplete`. `uncomplete` restores the saved previous state even if the due date was edited after completing | `done` changes only through the completion log (section 5) |
+| D-26 | A merge patch that leaves a task inconsistent (e.g. `due_date` null with `due_time` or `rrule` set) answers 422; the client nulls the dependent fields in the same patch. `relative` reminders of a task that loses its date are kept with `next_fire_at` null | Explicit over silent data loss; the reminders come back when a date does |
+| D-27 | A `tag_ids` entry that is unknown, deleted or someone else's answers 422 `validation_failed` | Same as any other invalid field |
+| D-28 | `Problem.code` is an enum in the contract, extended in each phase. Existing values never change meaning | Clients switch on it |
+| D-29 | Limits: request bodies up to 1 MiB (413 above); 20 requests/s per session with bursts of 60 (429 above); sessions expire after 7 days idle and 30 days in total; scheduler polls every 15 s; maximum reminder lateness 12 h. The last four are configurable (section 10) | Values the specification needs and did not give |
+| D-30 | Day filters compare `due_date` as stored, which for a fixed-time task is a date in `due_tz`, not in the user's zone | Accepted in V1: a rare case, and computing the user's local date on the server would need the zone of every reader |
+| D-31 | The web client keeps a full local replica built from `/sync/changes`; views and sidebar counts are computed on the client | Same model offline work will need; no count endpoints |
+| D-32 | Web Push: registering an endpoint that belongs to another user reassigns it to the caller; deleting a subscription is a hard delete (it is not syncable). `snooze` with a past `until` answers 422; a `snooze` reminder becomes a tombstone after it fires. The test notification is sent directly, without a delivery row | The browser belongs to whoever is signed in; fired snoozes do not pile up |
+| D-33 | `/sync/changes` does not carry completions, the profile or push subscriptions in V1 | Not needed online; revisit for offline work |
 
 ## 4. Data model
 
@@ -115,6 +130,7 @@ Conventions:
 | recurrence_done_count | int | Occurrences completed or skipped; used for `COUNT` |
 | completed_at | timestamptz, nullable | Only with `status = done` |
 | tag_ids | uuid[] | Tags sync as a field of the task |
+| deleted_with_list_id | uuid, nullable | Set when the task was deleted by deleting its list (D-20) |
 
 Due types:
 
@@ -162,7 +178,7 @@ At most 5 live reminders per task (`snooze` reminders do not count).
 
 ### sync_state
 
-A single row holding the global `seq` counter (D-07).
+A single row holding the global `seq` counter (D-07) and `purged_up_to_seq`, the highest `seq` removed by the purge (D-21).
 
 ## 5. Recurrence
 
@@ -192,12 +208,12 @@ Any other part is rejected with 422. The start of the series (`DTSTART`) is the 
 ### Complete and undo
 
 - `POST /tasks/{id}/complete` with `completion_id` (from the client) and `occurrence_due_date`.
-  - `completion_id` already exists → idempotent response, no changes.
+  - `completion_id` already exists → idempotent response (`applied: true` with the existing completion, D-24), no changes.
   - `occurrence_due_date` differs from the current `due_date` → not applied (`applied: false`) and the current state is returned (D-10).
   - Non-recurring task → `status = done`.
   - Recurring task → the next date is computed (R-2 to R-5).
 - `POST /tasks/{id}/uncomplete` with `completion_id`: restores the saved previous state. Only the latest record of the task can be undone (409 otherwise). If the record does not exist, it does nothing. Reminders deleted by R-8 are not restored.
-- `status = dropped` is set with `PATCH`; `done` only through `complete`.
+- `status = dropped` is set with `PATCH`; `done` only through `complete`. `PATCH status=open` only from `dropped` (D-25).
 
 ## 6. Reminders
 
@@ -226,7 +242,7 @@ Any other part is rejected with 422. The start of the series (`DTSTART`) is the 
 
 - Content: task title, list name, due date. The payload is encrypted (Web Push standard with VAPID keys).
 - Actions: **Complete** and **Snooze** (10 min, 1 h, tomorrow at the default time). The service worker performs them against the API using the session cookie; if the session has expired, it opens the app.
-- Snooze = `POST /tasks/{id}/snooze`, which creates a `snooze` reminder.
+- Snooze = `POST /tasks/{id}/snooze`, which creates a `snooze` reminder (details in D-32).
 - Notification texts (action labels, date formatting) are externalized like the rest of the UI (section 9).
 
 ### Limitations accepted in V1
@@ -254,7 +270,7 @@ Full detail in `api/openapi.yaml`. Conventions:
 - Base `/api/v1`. JSON. Timestamps RFC 3339 in UTC; dates `YYYY-MM-DD`; times `HH:MM`.
 - Errors in `application/problem+json` format (RFC 9457) with a stable `code` field for the client.
 - Pagination through an opaque cursor (`cursor`, `limit`).
-- Delete answers 204 and is a soft delete. Restoring is possible for 30 days; the row is physically purged after 90.
+- Delete answers 204 and is a soft delete. Restoring (lists and tasks only, D-19) is possible for 30 days; the row is physically purged after 90. Operations on deleted resources: D-22.
 - Deleting a list deletes its tasks in the same operation; restoring it restores the tasks deleted with it.
 
 ### Sync
@@ -265,7 +281,7 @@ In V1 the web client uses it to refresh when it regains focus. There is no real-
 
 ### Views
 
-"Today" (includes overdue) and "Next 7 days" are computed by the client with the `due_from` / `due_to` filters in the user's zone. There are no dedicated endpoints.
+"Today" (includes overdue) and "Next 7 days" are computed by the client in the user's zone, from its local replica (D-31). The API keeps the `due_from` / `due_to` filters. There are no dedicated endpoints.
 
 ### Completed section
 
@@ -302,10 +318,11 @@ The section is fed by completion records, not by tasks with `status = done`, so 
 ## 10. Non-functional requirements
 
 - **Configuration** through environment variables. Minimum: `DATABASE_URL`, `PUBLIC_URL`, `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`; each becomes required in the phase that uses it. Optional: `LISTEN_ADDR` (default `:8080`), `LOG_LEVEL` (`debug`, `info`, `warn`, `error`; default `info`).
+  - Optional, each read from the phase that uses it (D-29): `SESSION_IDLE_TIMEOUT` (default `168h`), `SESSION_MAX_AGE` (default `720h`), `SCHEDULER_INTERVAL` (default `15s`), `REMINDER_MAX_LATENESS` (default `12h`). Durations use Go syntax (`90m`, `12h`).
   - Secrets accept a `_FILE` variant (path to a file whose content is the value; a trailing newline is ignored; setting both forms is an error): `DATABASE_URL`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `VAPID_PRIVATE_KEY`.
 - **Migrations** embedded in the binary, applied at startup, forward-only.
 - **Observability**: structured JSON logs with no personal data or task content; `GET /healthz`; Prometheus metrics at `GET /metrics` (separate internal port).
-- **Security**: strict CSP headers, request size limits, per-session rate limit, version-pinned dependencies, non-root container with a read-only file system.
+- **Security**: strict CSP headers, request size limits and per-session rate limit (values in D-29), version-pinned dependencies, non-root container with a read-only file system.
 - **Backups**: all state lives in PostgreSQL; document dump and restore.
 - **Performance**: no formal target. Reference: 50 users, 10,000 tasks per user, read responses under 200 ms.
 
