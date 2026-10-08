@@ -4,6 +4,7 @@
 # Local environment overrides; may contain secrets
 .env
 *.local
+/deploy/dev.env
 
 # Editors and OS
 .idea/

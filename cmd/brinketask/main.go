@@ -18,9 +18,13 @@ import (
 	// users.timezone and due_tz must resolve everywhere.
 	_ "time/tzdata"
 
+	"github.com/brusapa/brinketask/internal/account"
+	"github.com/brusapa/brinketask/internal/auth"
+	"github.com/brusapa/brinketask/internal/clock"
 	"github.com/brusapa/brinketask/internal/config"
 	"github.com/brusapa/brinketask/internal/health"
 	"github.com/brusapa/brinketask/internal/httpapi"
+	"github.com/brusapa/brinketask/internal/session"
 	"github.com/brusapa/brinketask/internal/storage"
 )
 
@@ -59,8 +63,29 @@ func run() error {
 		return err
 	}
 
+	clk := clock.System{}
+	sessions := session.NewManager(pool, clk, cfg.SessionIdleTimeout, cfg.SessionMaxAge)
+
+	sameOrigin, err := httpapi.SameOrigin(cfg.PublicURL)
+	if err != nil {
+		return err
+	}
+	limiter := httpapi.NewRateLimiter(clk, httpapi.RequestsPerSecond, httpapi.RequestBurst)
+
 	mux := http.NewServeMux()
-	httpapi.Register(mux, httpapi.Server{}, logger)
+	// Order matters: the CSRF check needs nothing, the rate limit needs the
+	// session that Authenticate resolves.
+	accounts := account.NewService(pool, clk)
+	err = httpapi.Register(mux, httpapi.NewServer(accounts), logger,
+		sameOrigin,
+		httpapi.Authenticate(sessions, logger),
+		httpapi.RateLimit(limiter),
+	)
+	if err != nil {
+		return err
+	}
+	auth.NewHandler(cfg.OIDC, cfg.PublicURL, pool, clk, accounts, sessions, logger).
+		Register(mux, sameOrigin)
 	health.Register(mux, pool, logger)
 
 	server := &http.Server{

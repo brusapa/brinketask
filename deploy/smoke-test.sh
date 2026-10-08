@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Smoke test of a built application image: starts PostgreSQL and the image
 # with the production restrictions (read-only root, no capabilities) and
-# checks that the server migrates and answers GET /healthz with 200.
+# checks that the server migrates, answers GET /healthz with 200, refuses
+# anonymous API calls and serves the login route.
+# The OIDC provider is a dummy: discovery runs on the first login, not at
+# startup, and the health check does not depend on it.
 #
 # Usage: deploy/smoke-test.sh [image]   (default localhost/brinketask:dev)
 # Uses Podman unless CONTAINER_ENGINE says otherwise.
@@ -37,18 +40,36 @@ done
 "$engine" run -d --name "$name-app" --network "$name" \
   --read-only --cap-drop=ALL -p "127.0.0.1:$port:8080" \
   -e DATABASE_URL="postgres://smoke:smoke@$name-db:5432/smoke?sslmode=disable" \
+  -e PUBLIC_URL="http://localhost:$port" \
+  -e OIDC_ISSUER="http://127.0.0.1:1" \
+  -e OIDC_CLIENT_ID=smoke -e OIDC_CLIENT_SECRET=smoke \
   "$image" >/dev/null
 
+fail() {
+  echo "smoke test failed: $1" >&2
+  "$engine" logs "$name-app" >&2 || true
+  exit 1
+}
+
 echo "waiting for GET /healthz"
+status=""
 for _ in $(seq 30); do
   status="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$port/healthz" || true)"
-  if [ "$status" = "200" ]; then
-    echo "smoke test passed"
-    exit 0
-  fi
+  [ "$status" = "200" ] && break
   sleep 1
 done
+[ "$status" = "200" ] || fail "last /healthz status ${status:-none}"
 
-echo "smoke test failed: last /healthz status ${status:-none}" >&2
-"$engine" logs "$name-app" >&2 || true
-exit 1
+# The API is mounted and refuses anonymous callers.
+status="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$port/api/v1/me")"
+[ "$status" = "401" ] || fail "GET /api/v1/me without a session answered $status, want 401"
+
+# The login route is mounted; with the dummy provider it reports it
+# unavailable instead of failing.
+location="$(curl -s -o /dev/null -w '%{redirect_url}' "http://127.0.0.1:$port/auth/login")"
+case "$location" in
+  */?auth_error=provider_unavailable) ;;
+  *) fail "GET /auth/login redirected to '$location', want /?auth_error=provider_unavailable" ;;
+esac
+
+echo "smoke test passed"

@@ -7,6 +7,7 @@ package testdb
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/testcontainers/testcontainers-go"
@@ -21,24 +22,36 @@ const Image = "docker.io/library/postgres:18.6-alpine3.24"
 // URL. The container is removed when the test finishes.
 func Start(t *testing.T) string {
 	t.Helper()
-	ctx := context.Background()
+	url, terminate, err := Run(context.Background())
+	t.Cleanup(terminate)
+	if err != nil {
+		t.Fatalf("testdb: %v", err)
+	}
+	return url
+}
 
+// Run starts a fresh, empty PostgreSQL container and returns its connection
+// URL and a function that removes it. It is for code that outlives a single
+// test (see package storagetest); tests call Start. terminate is never nil
+// and is safe to call when err is not nil.
+func Run(ctx context.Context) (url string, terminate func(), err error) {
 	container, err := postgres.Run(ctx, Image,
 		postgres.WithDatabase("brinketask"),
 		postgres.WithUsername("brinketask"),
 		postgres.WithPassword("brinketask"),
 		postgres.BasicWaitStrategies(),
 	)
-	// CleanupContainer registers the removal with t.Cleanup; it is safe to
-	// call even when Run failed and container is nil.
-	testcontainers.CleanupContainer(t, container)
+	terminate = func() {
+		// TerminateContainer accepts a nil container (when Run failed).
+		_ = testcontainers.TerminateContainer(container)
+	}
 	if err != nil {
-		t.Fatalf("testdb: start postgres: %v", err)
+		return "", terminate, fmt.Errorf("start postgres: %w", err)
 	}
 
-	url, err := container.ConnectionString(ctx, "sslmode=disable")
+	url, err = container.ConnectionString(ctx, "sslmode=disable")
 	if err != nil {
-		t.Fatalf("testdb: connection string: %v", err)
+		return "", terminate, fmt.Errorf("connection string: %w", err)
 	}
-	return url
+	return url, terminate, nil
 }

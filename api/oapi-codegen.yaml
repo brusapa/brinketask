@@ -10,7 +10,14 @@ generate:
   # Typed request and response objects per operation, instead of raw
   # http.ResponseWriter handlers.
   strict-server: true
+  # The contract itself, compressed into the binary. The request validator
+  # (kin-openapi) checks requests against it at run time.
+  embedded-spec: true
 output-options:
   # Nullable fields become nullable.Nullable[T], which tells "absent" apart
   # from an explicit null, as JSON Merge Patch requires (D-05).
   nullable-type: true
+compatibility:
+  # Enum constants are named after their type (ProblemCodeNotFound,
+  # TaskStatusOpen), so values shared by two enums cannot collide.
+  always-prefix-enum-values: true
