@@ -18,9 +18,11 @@ import (
 	// users.timezone and due_tz must resolve everywhere.
 	_ "time/tzdata"
 
+	"github.com/brusapa/brinketask/internal/clock"
 	"github.com/brusapa/brinketask/internal/config"
 	"github.com/brusapa/brinketask/internal/health"
 	"github.com/brusapa/brinketask/internal/httpapi"
+	"github.com/brusapa/brinketask/internal/session"
 	"github.com/brusapa/brinketask/internal/storage"
 )
 
@@ -59,8 +61,14 @@ func run() error {
 		return err
 	}
 
+	clk := clock.System{}
+	sessions := session.NewManager(pool, clk, cfg.SessionIdleTimeout, cfg.SessionMaxAge)
+
 	mux := http.NewServeMux()
-	if err := httpapi.Register(mux, httpapi.Server{}, logger); err != nil {
+	err = httpapi.Register(mux, httpapi.Server{}, logger,
+		httpapi.Authenticate(sessions, logger),
+	)
+	if err != nil {
 		return err
 	}
 	health.Register(mux, pool, logger)
