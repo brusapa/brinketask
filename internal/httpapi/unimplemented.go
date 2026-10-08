@@ -12,14 +12,6 @@ import "context"
 // exactly the fields of problemResponse, so Go allows converting one into the
 // other with T(value).
 
-func (Server) DeleteChecklistItem(context.Context, DeleteChecklistItemRequestObject) (DeleteChecklistItemResponseObject, error) {
-	return DeleteChecklistItemdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
-}
-
-func (Server) PatchChecklistItem(context.Context, PatchChecklistItemRequestObject) (PatchChecklistItemResponseObject, error) {
-	return PatchChecklistItemdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
-}
-
 func (Server) ListCompletions(context.Context, ListCompletionsRequestObject) (ListCompletionsResponseObject, error) {
 	return ListCompletionsdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
 }
@@ -58,10 +50,6 @@ func (Server) GetChanges(context.Context, GetChangesRequestObject) (GetChangesRe
 
 func (Server) ListTasks(context.Context, ListTasksRequestObject) (ListTasksResponseObject, error) {
 	return ListTasksdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
-}
-
-func (Server) CreateChecklistItem(context.Context, CreateChecklistItemRequestObject) (CreateChecklistItemResponseObject, error) {
-	return CreateChecklistItemdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
 }
 
 func (Server) CompleteTask(context.Context, CompleteTaskRequestObject) (CompleteTaskResponseObject, error) {
