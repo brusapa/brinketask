@@ -74,7 +74,10 @@ To run the server on the host instead of in a container, start only the database
 
 ```sh
 podman compose -f deploy/compose.dev.yaml up -d db
-DATABASE_URL='postgres://brinketask:brinketask@127.0.0.1:5432/brinketask?sslmode=disable' go run ./cmd/brinketask
+export DATABASE_URL='postgres://brinketask:brinketask@127.0.0.1:5432/brinketask?sslmode=disable'
+export PUBLIC_URL=http://localhost:8080
+export OIDC_ISSUER=http://localhost:1411 OIDC_CLIENT_ID=brinketask-dev OIDC_CLIENT_SECRET=not-configured
+go run ./cmd/brinketask
 ```
 
 CI (`.github/workflows/ci.yml`, GitHub Actions) runs `make check-generated`, golangci-lint, `make test` and `make build`, then `make image` and `deploy/smoke-test.sh`. Actions are pinned by commit SHA.

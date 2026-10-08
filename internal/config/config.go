@@ -6,39 +6,67 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
+	"net/url"
 	"os"
 	"strings"
+	"time"
 )
 
 // Config holds every setting the process needs. Settings used by later phases
-// (OIDC, VAPID, ...) are added when the code that needs them arrives.
+// (VAPID, scheduler, ...) are added when the code that needs them arrives.
 type Config struct {
 	DatabaseURL string
 	ListenAddr  string
 	LogLevel    slog.Level
+
+	// PublicURL is the origin the browser uses to reach the server, e.g.
+	// "https://tasks.example.com", without a trailing slash. The OIDC
+	// redirect URL and the same-origin check derive from it.
+	PublicURL string
+
+	OIDC OIDC
+
+	// Sessions end after SessionIdleTimeout without use, and after
+	// SessionMaxAge in any case (SPEC section 7, D-29).
+	SessionIdleTimeout time.Duration
+	SessionMaxAge      time.Duration
+}
+
+// OIDC identifies the server as a confidential client of the OIDC provider
+// (D-13).
+type OIDC struct {
+	// Issuer is the provider's issuer URL; discovery reads
+	// Issuer + "/.well-known/openid-configuration".
+	Issuer       string
+	ClientID     string
+	ClientSecret string
 }
 
 // LookupFunc has the signature of os.LookupEnv. Load takes it as a parameter
 // so tests can supply variables without touching the real environment.
 type LookupFunc func(key string) (value string, ok bool)
 
-const defaultListenAddr = ":8080"
+const (
+	defaultListenAddr         = ":8080"
+	defaultSessionIdleTimeout = 7 * 24 * time.Hour
+	defaultSessionMaxAge      = 30 * 24 * time.Hour
+)
 
-// Load builds a Config from the variables returned by lookup.
+// Load builds a Config from the variables returned by lookup. It reports the
+// first problem it finds.
 func Load(lookup LookupFunc) (Config, error) {
 	cfg := Config{
-		ListenAddr: defaultListenAddr,
-		LogLevel:   slog.LevelInfo,
+		ListenAddr:         defaultListenAddr,
+		LogLevel:           slog.LevelInfo,
+		SessionIdleTimeout: defaultSessionIdleTimeout,
+		SessionMaxAge:      defaultSessionMaxAge,
 	}
+	var err error
 
-	databaseURL, err := secret(lookup, "DATABASE_URL")
-	if err != nil {
+	if cfg.DatabaseURL, err = requiredSecret(lookup, "DATABASE_URL"); err != nil {
 		return Config{}, err
 	}
-	if databaseURL == "" {
-		return Config{}, errors.New("config: DATABASE_URL or DATABASE_URL_FILE is required")
-	}
-	cfg.DatabaseURL = databaseURL
 
 	if value, ok := lookup("LISTEN_ADDR"); ok && value != "" {
 		cfg.ListenAddr = value
@@ -51,7 +79,114 @@ func Load(lookup LookupFunc) (Config, error) {
 		}
 	}
 
+	publicURL, _ := lookup("PUBLIC_URL")
+	if cfg.PublicURL, err = parsePublicURL(publicURL); err != nil {
+		return Config{}, fmt.Errorf("config: PUBLIC_URL: %w", err)
+	}
+
+	issuer, _ := lookup("OIDC_ISSUER")
+	if cfg.OIDC.Issuer, err = parseIssuer(issuer); err != nil {
+		return Config{}, fmt.Errorf("config: OIDC_ISSUER: %w", err)
+	}
+	if cfg.OIDC.ClientID, err = requiredSecret(lookup, "OIDC_CLIENT_ID"); err != nil {
+		return Config{}, err
+	}
+	if cfg.OIDC.ClientSecret, err = requiredSecret(lookup, "OIDC_CLIENT_SECRET"); err != nil {
+		return Config{}, err
+	}
+
+	if err := duration(lookup, "SESSION_IDLE_TIMEOUT", &cfg.SessionIdleTimeout); err != nil {
+		return Config{}, err
+	}
+	if err := duration(lookup, "SESSION_MAX_AGE", &cfg.SessionMaxAge); err != nil {
+		return Config{}, err
+	}
+
 	return cfg, nil
+}
+
+// parsePublicURL accepts an origin: scheme and host, optionally a port, and
+// no path, query or fragment, because the server is mounted at the root of
+// its origin. The scheme must be https (SPEC section 2: the session cookie
+// is Secure, and service workers need it), except on a loopback host,
+// where browsers treat http as secure too; that is what local development
+// uses.
+func parsePublicURL(raw string) (string, error) {
+	if raw == "" {
+		return "", errors.New("required")
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "", err
+	}
+	if u.Host == "" || u.Opaque != "" {
+		return "", errors.New("must be an absolute URL such as https://tasks.example.com")
+	}
+	if (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" || u.User != nil {
+		return "", errors.New("must be an origin, without path, query, fragment or credentials")
+	}
+	switch {
+	case u.Scheme == "https":
+	case u.Scheme == "http" && isLoopback(u.Hostname()):
+	default:
+		return "", errors.New("must use https (http is accepted only for localhost)")
+	}
+	return u.Scheme + "://" + u.Host, nil
+}
+
+func isLoopback(host string) bool {
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+// parseIssuer accepts an absolute http or https URL. It is kept exactly as
+// given (apart from a trailing slash), because the provider's tokens must
+// carry this same string as their "iss" claim.
+func parseIssuer(raw string) (string, error) {
+	if raw == "" {
+		return "", errors.New("required")
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "", err
+	}
+	if (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
+		return "", errors.New("must be an absolute http or https URL")
+	}
+	return strings.TrimSuffix(raw, "/"), nil
+}
+
+// duration parses an optional Go duration ("90m", "168h") into *target,
+// leaving the default in place when the variable is unset.
+func duration(lookup LookupFunc, name string, target *time.Duration) error {
+	value, ok := lookup(name)
+	if !ok || value == "" {
+		return nil
+	}
+	d, err := time.ParseDuration(value)
+	if err != nil {
+		return fmt.Errorf("config: %s: %w", name, err)
+	}
+	if d <= 0 {
+		return fmt.Errorf("config: %s: must be positive", name)
+	}
+	*target = d
+	return nil
+}
+
+// requiredSecret is secret for a variable that must be set.
+func requiredSecret(lookup LookupFunc, name string) (string, error) {
+	value, err := secret(lookup, name)
+	if err != nil {
+		return "", err
+	}
+	if value == "" {
+		return "", fmt.Errorf("config: %s or %s_FILE is required", name, name)
+	}
+	return value, nil
 }
 
 // secret returns the value of a secret variable. Every secret can be given

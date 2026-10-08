@@ -36,6 +36,12 @@ services:
     environment:
       DATABASE_URL: postgres://brinketask:brinketask@db:5432/brinketask?sslmode=disable
       LOG_LEVEL: debug
+      PUBLIC_URL: http://localhost:8080
+      # Placeholder provider until the development Pocket ID is wired in:
+      # the server starts, but logging in fails.
+      OIDC_ISSUER: http://localhost:1411
+      OIDC_CLIENT_ID: brinketask-dev
+      OIDC_CLIENT_SECRET: not-configured
     ports:
       - "127.0.0.1:8080:8080"
     # Same restrictions as production (SPEC section 10).

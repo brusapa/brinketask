@@ -323,6 +323,7 @@ The section is fed by completion records, not by tasks with `status = done`, so 
 
 - **Configuration** through environment variables. Minimum: `DATABASE_URL`, `PUBLIC_URL`, `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`; each becomes required in the phase that uses it. Optional: `LISTEN_ADDR` (default `:8080`), `LOG_LEVEL` (`debug`, `info`, `warn`, `error`; default `info`).
   - Optional, each read from the phase that uses it (D-29): `SESSION_IDLE_TIMEOUT` (default `168h`), `SESSION_MAX_AGE` (default `720h`), `SCHEDULER_INTERVAL` (default `15s`), `REMINDER_MAX_LATENESS` (default `12h`). Durations use Go syntax (`90m`, `12h`).
+  - `PUBLIC_URL` is the origin the browser uses (`https://tasks.example.com`, no path). It must be `https`, except on a loopback host (`localhost`, `127.0.0.1`, `[::1]`), which browsers treat as secure. The OIDC redirect URL is `PUBLIC_URL` + `/auth/callback`.
   - Secrets accept a `_FILE` variant (path to a file whose content is the value; a trailing newline is ignored; setting both forms is an error): `DATABASE_URL`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `VAPID_PRIVATE_KEY`.
 - **Migrations** embedded in the binary, applied at startup, forward-only.
 - **Observability**: structured JSON logs with no personal data or task content; `GET /healthz`; Prometheus metrics at `GET /metrics` (separate internal port).

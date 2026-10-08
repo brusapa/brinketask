@@ -2,6 +2,8 @@
 # Smoke test of a built application image: starts PostgreSQL and the image
 # with the production restrictions (read-only root, no capabilities) and
 # checks that the server migrates and answers GET /healthz with 200.
+# The OIDC provider is a dummy: discovery runs on the first login, not at
+# startup, and the health check does not depend on it.
 #
 # Usage: deploy/smoke-test.sh [image]   (default localhost/brinketask:dev)
 # Uses Podman unless CONTAINER_ENGINE says otherwise.
@@ -37,6 +39,9 @@ done
 "$engine" run -d --name "$name-app" --network "$name" \
   --read-only --cap-drop=ALL -p "127.0.0.1:$port:8080" \
   -e DATABASE_URL="postgres://smoke:smoke@$name-db:5432/smoke?sslmode=disable" \
+  -e PUBLIC_URL="http://localhost:$port" \
+  -e OIDC_ISSUER="http://127.0.0.1:1" \
+  -e OIDC_CLIENT_ID=smoke -e OIDC_CLIENT_SECRET=smoke \
   "$image" >/dev/null
 
 echo "waiting for GET /healthz"
