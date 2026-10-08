@@ -12,10 +12,6 @@ import "context"
 // exactly the fields of problemResponse, so Go allows converting one into the
 // other with T(value).
 
-func (Server) ListCompletions(context.Context, ListCompletionsRequestObject) (ListCompletionsResponseObject, error) {
-	return ListCompletionsdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
-}
-
 func (Server) ListPushSubscriptions(context.Context, ListPushSubscriptionsRequestObject) (ListPushSubscriptionsResponseObject, error) {
 	return ListPushSubscriptionsdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
 }
@@ -48,14 +44,6 @@ func (Server) GetChanges(context.Context, GetChangesRequestObject) (GetChangesRe
 	return GetChangesdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
 }
 
-func (Server) CompleteTask(context.Context, CompleteTaskRequestObject) (CompleteTaskResponseObject, error) {
-	return CompleteTaskdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
-}
-
-func (Server) ListTaskCompletions(context.Context, ListTaskCompletionsRequestObject) (ListTaskCompletionsResponseObject, error) {
-	return ListTaskCompletionsdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
-}
-
 func (Server) CreateReminder(context.Context, CreateReminderRequestObject) (CreateReminderResponseObject, error) {
 	return CreateReminderdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
 }
@@ -66,8 +54,4 @@ func (Server) SkipTaskOccurrence(context.Context, SkipTaskOccurrenceRequestObjec
 
 func (Server) SnoozeTask(context.Context, SnoozeTaskRequestObject) (SnoozeTaskResponseObject, error) {
 	return SnoozeTaskdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
-}
-
-func (Server) UncompleteTask(context.Context, UncompleteTaskRequestObject) (UncompleteTaskResponseObject, error) {
-	return UncompleteTaskdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
 }

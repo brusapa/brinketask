@@ -176,3 +176,43 @@ func nullableDateFromAPI(n nullable.Nullable[openapi_types.Date]) nullable.Nulla
 		return nullable.NewNullableWithValue(*dateFromAPI(&d))
 	}
 }
+
+func completionToAPI(c tasks.Completion) Completion {
+	return Completion{
+		Id:                c.ID,
+		TaskId:            c.TaskID,
+		Kind:              CompletionKind(c.Kind),
+		OccurrenceDueDate: dateToAPI(c.OccurrenceDueDate),
+		CompletedAt:       c.CompletedAt.UTC(),
+	}
+}
+
+func completionResultToAPI(r tasks.CompletionResult) CompletionResult {
+	result := CompletionResult{
+		Applied:    r.Applied,
+		Task:       taskToAPI(r.Task, true),
+		Completion: nullable.NewNullNullable[Completion](),
+	}
+	if r.Completion != nil {
+		result.Completion = nullable.NewNullableWithValue(completionToAPI(*r.Completion))
+	}
+	return result
+}
+
+func completionEntryToAPI(e tasks.CompletionEntry) CompletionEntry {
+	return CompletionEntry{
+		Id:                e.ID,
+		TaskId:            e.TaskID,
+		Kind:              CompletionEntryKind(e.Kind),
+		OccurrenceDueDate: dateToAPI(e.OccurrenceDueDate),
+		CompletedAt:       e.CompletedAt.UTC(),
+		CanUndo:           e.CanUndo,
+		Task: TaskSummary{
+			Id:       e.TaskID,
+			ListId:   e.ListID,
+			Title:    e.Title,
+			Priority: int(e.Priority),
+			Rrule:    pointerToNullable(e.Rrule),
+		},
+	}
+}
