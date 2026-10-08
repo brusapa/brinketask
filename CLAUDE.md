@@ -52,7 +52,7 @@ Tool versions: Go 1.27.1, golangci-lint v2.14.0, GNU Make.
 
 | Command | What it does |
 |---|---|
-| `make generate` | Regenerates code from `api/openapi.yaml` (oapi-codegen v2.8.0, pinned as a `go tool`) into `internal/httpapi/api.gen.go`. Generated files are committed |
+| `make generate` | Regenerates code from `api/openapi.yaml` (oapi-codegen v2.8.0, pinned as a `go tool`) into `internal/httpapi/api.gen.go`, and the data access code from `internal/storage/queries/*.sql` (sqlc 1.31.1, run from its pinned image with Podman) into `internal/storage/dbgen`. Generated files are committed |
 | `make check-generated` | Regenerates and fails if any `*.gen.go` file changed: run after editing the contract |
 | `make lint` | golangci-lint (config in `.golangci.yml`); fails if the linter version differs |
 | `make test` | `go test -race ./...`; `GO_TEST_FLAGS=` drops `-race` when no C compiler is available |
@@ -62,7 +62,7 @@ Tool versions: Go 1.27.1, golangci-lint v2.14.0, GNU Make.
 | `make dev` / `make dev-down` | Starts / stops PostgreSQL and the app (`deploy/compose.dev.yaml`) on `http://127.0.0.1:8080`. Needs a compose provider for `podman compose` (podman-compose or docker-compose) |
 | `deploy/smoke-test.sh` | Runs the built image read-only next to PostgreSQL and waits for `GET /healthz` = 200 (CI runs it after `make image`) |
 
-Integration tests start a throwaway PostgreSQL (`internal/testdb`) through testcontainers, which needs a Docker-compatible API. With Podman:
+Integration tests start a throwaway PostgreSQL (`internal/testdb`) through testcontainers, which needs a Docker-compatible API. Tests that need the schema call `storagetest.NewPool`: one container per test package, and a fresh database cloned from a migrated template per test (the package needs `func TestMain(m *testing.M) { storagetest.Main(m) }`). With Podman:
 
 ```sh
 systemctl --user enable --now podman.socket

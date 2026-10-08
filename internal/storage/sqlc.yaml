@@ -1,0 +1,28 @@
+# sqlc generates typed Go functions from the SQL in queries/ (`make generate`).
+# It reads the schema from the goose migrations; it understands their
+# annotations. Generated files end in .gen.go and are committed.
+version: "2"
+sql:
+  - engine: postgresql
+    schema: ../../migrations
+    queries: queries
+    gen:
+      go:
+        package: dbgen
+        out: dbgen
+        sql_package: pgx/v5
+        emit_pointers_for_null_types: true
+        output_db_file_name: db.gen.go
+        output_models_file_name: models.gen.go
+        output_files_suffix: .gen
+        overrides:
+          # Same UUID type as the generated API code.
+          - db_type: uuid
+            go_type: github.com/google/uuid.UUID
+          - db_type: timestamptz
+            go_type: time.Time
+          - db_type: timestamptz
+            nullable: true
+            go_type:
+              type: time.Time
+              pointer: true

@@ -176,6 +176,10 @@ At most 5 live reminders per task (`snooze` reminders do not count).
 
 `id_hash` (hash of the session identifier; the clear value lives only in the cookie), `user_id`, `created_at`, `last_seen_at`, `expires_at`.
 
+### auth_requests
+
+A login in progress (section 7), so the callback can finish it: `browser_hash` (hash of the `brinketask_auth` cookie that binds it to the browser that started it), `state`, `nonce`, `code_verifier` (PKCE), `created_at`, `expires_at` (10 minutes). Deleted when used; not syncable.
+
 ### sync_state
 
 A single row holding the global `seq` counter (D-07) and `purged_up_to_seq`, the highest `seq` removed by the purge (D-21).

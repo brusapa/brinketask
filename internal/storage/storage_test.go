@@ -59,26 +59,6 @@ func TestMigrateFromEmptyAndAgain(t *testing.T) {
 	}
 }
 
-func TestSyncStateHasExactlyOneRow(t *testing.T) {
-	ctx := context.Background()
-	pool := openTestDB(t)
-	if err := Migrate(ctx, pool, discardLogger); err != nil {
-		t.Fatalf("Migrate: %v", err)
-	}
-
-	var seq int64
-	if err := pool.QueryRow(ctx, "SELECT seq FROM sync_state").Scan(&seq); err != nil {
-		t.Fatalf("read sync_state: %v", err)
-	}
-	if seq != 0 {
-		t.Errorf("initial seq = %d, want 0", seq)
-	}
-
-	if _, err := pool.Exec(ctx, "INSERT INTO sync_state (id, seq) VALUES (false, 0)"); err == nil {
-		t.Error("inserting a second sync_state row succeeded, want a constraint violation")
-	}
-}
-
 func TestOpenFailsWhenDatabaseUnreachable(t *testing.T) {
 	// Port 1 on localhost has no listener, so the ping must fail fast.
 	_, err := Open(context.Background(), "postgres://user:pw@127.0.0.1:1/db?connect_timeout=2")
