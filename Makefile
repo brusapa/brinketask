@@ -45,8 +45,12 @@ image:
 
 DEV_COMPOSE := $(CONTAINER_ENGINE) compose -f deploy/compose.dev.yaml
 
+# Pocket ID must be up and configured before the app starts, because the
+# app reads the OIDC client secret from deploy/dev.env.
 dev:
-	$(DEV_COMPOSE) up --build
+	$(DEV_COMPOSE) up -d db pocket-id
+	deploy/dev-oidc-setup.sh
+	$(DEV_COMPOSE) up --build app
 
 dev-down:
 	$(DEV_COMPOSE) down

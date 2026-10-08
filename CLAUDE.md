@@ -59,8 +59,9 @@ Tool versions: Go 1.27.1, golangci-lint v2.14.0, GNU Make.
 | `make build` | Static binary in `bin/brinketask` |
 | `make all` | lint, test and build: run before calling anything done |
 | `make image` | Builds the application image `localhost/brinketask:dev` from `deploy/Dockerfile` with Podman |
-| `make dev` / `make dev-down` | Starts / stops PostgreSQL and the app (`deploy/compose.dev.yaml`) on `http://127.0.0.1:8080`. Needs a compose provider for `podman compose` (podman-compose or docker-compose) |
-| `deploy/smoke-test.sh` | Runs the built image read-only next to PostgreSQL and waits for `GET /healthz` = 200 (CI runs it after `make image`) |
+| `make dev` / `make dev-down` | Starts / stops PostgreSQL, a Pocket ID on `http://localhost:1411` and the app on `http://localhost:8080` (`deploy/compose.dev.yaml`). Needs a compose provider for `podman compose` (podman-compose or docker-compose) |
+| `deploy/dev-oidc-setup.sh` | Run by `make dev`: creates the Pocket ID user `dev` and the OIDC client `brinketask-dev`, writes the client secret to the git-ignored `deploy/dev.env`, and prints a single-use login link that needs no passkey. Idempotent; run it again for a new link |
+| `deploy/smoke-test.sh` | Runs the built image read-only next to PostgreSQL and checks `GET /healthz` = 200, `GET /api/v1/me` = 401 and that `/auth/login` is served (CI runs it after `make image`) |
 
 Integration tests start a throwaway PostgreSQL (`internal/testdb`) through testcontainers, which needs a Docker-compatible API. Tests that need the schema call `storagetest.NewPool`: one container per test package, and a fresh database cloned from a migrated template per test (the package needs `func TestMain(m *testing.M) { storagetest.Main(m) }`). With Podman:
 
@@ -70,14 +71,17 @@ export DOCKER_HOST=unix://$XDG_RUNTIME_DIR/podman/podman.sock
 export TESTCONTAINERS_RYUK_CONTAINER_PRIVILEGED=true   # the cleanup container needs it under Podman
 ```
 
-To run the server on the host instead of in a container, start only the database and point the binary at it:
+To run the server on the host instead of in a container, start only the database and Pocket ID and point the binary at them. It listens on port 8081, because the Pocket ID container publishes 8080 for the containerized app:
 
 ```sh
-podman compose -f deploy/compose.dev.yaml up -d db
+podman compose -f deploy/compose.dev.yaml up -d db pocket-id
+deploy/dev-oidc-setup.sh            # prints the login link
+set -a; . deploy/dev.env; set +a    # OIDC_CLIENT_ID, OIDC_CLIENT_SECRET
 export DATABASE_URL='postgres://brinketask:brinketask@127.0.0.1:5432/brinketask?sslmode=disable'
-export PUBLIC_URL=http://localhost:8080
-export OIDC_ISSUER=http://localhost:1411 OIDC_CLIENT_ID=brinketask-dev OIDC_CLIENT_SECRET=not-configured
+export LISTEN_ADDR=127.0.0.1:8081 PUBLIC_URL=http://localhost:8081 OIDC_ISSUER=http://localhost:1411
 go run ./cmd/brinketask
 ```
+
+To log in, open the link the setup script printed (it signs you in to Pocket ID as `dev`), then `/auth/login` on the app (`http://localhost:8080` in compose, `http://localhost:8081` on the host). Use `localhost`, not `127.0.0.1`: the cookies and the OIDC callback are bound to the `PUBLIC_URL` origin.
 
 CI (`.github/workflows/ci.yml`, GitHub Actions) runs `make check-generated`, golangci-lint, `make test` and `make build`, then `make image` and `deploy/smoke-test.sh`. Actions are pinned by commit SHA.
