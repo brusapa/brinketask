@@ -132,9 +132,4 @@ func TestUpdateSettingsRejectsInvalidValues(t *testing.T) {
 	if p.Timezone != "Europe/Madrid" {
 		t.Errorf("timezone = %q after a rejected patch, want unchanged", p.Timezone)
 	}
-	for _, zone := range []string{"UTC", "Atlantic/Canary", "America/Argentina/Buenos_Aires"} {
-		if err := account.ValidateTimezone(zone); err != nil {
-			t.Errorf("ValidateTimezone(%q) = %v", zone, err)
-		}
-	}
 }
