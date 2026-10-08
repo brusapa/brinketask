@@ -1,0 +1,26 @@
+# golangci-lint v2 configuration. The linter version is pinned in the
+# Makefile and in the CI workflow.
+version: "2"
+
+linters:
+  # "standard" = errcheck, govet, ineffassign, staticcheck, unused.
+  default: standard
+  enable:
+    - bodyclose   # HTTP response bodies must be closed
+    - errorlint   # wrapped errors compared with errors.Is / errors.As
+    - gosec       # common security mistakes
+    - misspell
+    - noctx       # outgoing requests and queries carry a context
+    - unconvert
+  exclusions:
+    # Generated files (marked "Code generated ... DO NOT EDIT.") are not linted.
+    generated: strict
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/brusapa/brinketask

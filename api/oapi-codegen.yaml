@@ -1,0 +1,16 @@
+# oapi-codegen configuration (D-01). Run through `make generate`, which
+# executes `go generate` in internal/httpapi; `output` is relative to that
+# directory.
+package: httpapi
+output: api.gen.go
+generate:
+  models: true
+  # Plain net/http (Go 1.22+ ServeMux patterns); no router dependency.
+  std-http-server: true
+  # Typed request and response objects per operation, instead of raw
+  # http.ResponseWriter handlers.
+  strict-server: true
+output-options:
+  # Nullable fields become nullable.Nullable[T], which tells "absent" apart
+  # from an explicit null, as JSON Merge Patch requires (D-05).
+  nullable-type: true

@@ -17,8 +17,11 @@ info:
     - A resource the caller has no access to answers 404.
     - Cookie-authenticated state-changing requests must be same-origin, otherwise 403.
 
-    Browser authentication routes live outside this API and are not described here:
-    GET /auth/login, GET /auth/callback, POST /auth/logout.
+    Operational routes live outside this API and are not described here:
+    - Browser authentication: GET /auth/login, GET /auth/callback, POST /auth/logout.
+    - GET /healthz: unauthenticated; 200 when the database answers, 503 otherwise.
+    - GET /metrics: Prometheus metrics, served on a separate internal port.
+    - The web client's static files, served from the same origin.
 servers:
   - url: /api/v1
 security:
