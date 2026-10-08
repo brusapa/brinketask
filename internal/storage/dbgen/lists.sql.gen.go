@@ -12,6 +12,74 @@ import (
 	"github.com/google/uuid"
 )
 
+const deleteTasksWithList = `-- name: DeleteTasksWithList :exec
+UPDATE tasks t
+SET deleted_at = $1::timestamptz, deleted_with_list_id = $2::uuid, version = t.version + 1,
+    seq = v.seq, updated_at = $1
+FROM (SELECT unnest($3::uuid[]) AS id, unnest($4::bigint[]) AS seq) AS v
+WHERE t.id = v.id
+`
+
+type DeleteTasksWithListParams struct {
+	Now    time.Time
+	ListID uuid.UUID
+	Ids    []uuid.UUID
+	Seqs   []int64
+}
+
+// Soft-deletes the given tasks as part of deleting their list (D-20). ids
+// and seqs are parallel arrays: each task gets its own seq.
+// Two unnest calls in one SELECT list advance together, pairing ids[i]
+// with seqs[i].
+func (q *Queries) DeleteTasksWithList(ctx context.Context, arg DeleteTasksWithListParams) error {
+	_, err := q.db.Exec(ctx, deleteTasksWithList,
+		arg.Now,
+		arg.ListID,
+		arg.Ids,
+		arg.Seqs,
+	)
+	return err
+}
+
+const getListForUser = `-- name: GetListForUser :one
+SELECT l.id, l.owner_id, l.name, l.color, l.position, l.is_inbox, l.version, l.seq, l.created_at, l.updated_at, l.deleted_at, m.role
+FROM lists l
+JOIN list_members m ON m.list_id = l.id AND m.user_id = $1
+WHERE l.id = $2
+`
+
+type GetListForUserParams struct {
+	UserID uuid.UUID
+	ID     uuid.UUID
+}
+
+type GetListForUserRow struct {
+	List List
+	Role string
+}
+
+// A list the user is a member of, live or deleted, with the user's role.
+// Every list access goes through list_members (CLAUDE.md).
+func (q *Queries) GetListForUser(ctx context.Context, arg GetListForUserParams) (GetListForUserRow, error) {
+	row := q.db.QueryRow(ctx, getListForUser, arg.UserID, arg.ID)
+	var i GetListForUserRow
+	err := row.Scan(
+		&i.List.ID,
+		&i.List.OwnerID,
+		&i.List.Name,
+		&i.List.Color,
+		&i.List.Position,
+		&i.List.IsInbox,
+		&i.List.Version,
+		&i.List.Seq,
+		&i.List.CreatedAt,
+		&i.List.UpdatedAt,
+		&i.List.DeletedAt,
+		&i.Role,
+	)
+	return i, err
+}
+
 const insertList = `-- name: InsertList :exec
 INSERT INTO lists (id, owner_id, name, color, position, is_inbox, version, seq, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6, 1, $7, $8, $8)
@@ -56,5 +124,234 @@ type InsertListMemberParams struct {
 
 func (q *Queries) InsertListMember(ctx context.Context, arg InsertListMemberParams) error {
 	_, err := q.db.Exec(ctx, insertListMember, arg.ListID, arg.UserID, arg.Role)
+	return err
+}
+
+const listExists = `-- name: ListExists :one
+SELECT EXISTS (SELECT 1 FROM lists WHERE id = $1)
+`
+
+func (q *Queries) ListExists(ctx context.Context, id uuid.UUID) (bool, error) {
+	row := q.db.QueryRow(ctx, listExists, id)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const listListsForUser = `-- name: ListListsForUser :many
+SELECT l.id, l.owner_id, l.name, l.color, l.position, l.is_inbox, l.version, l.seq, l.created_at, l.updated_at, l.deleted_at, m.role
+FROM lists l
+JOIN list_members m ON m.list_id = l.id AND m.user_id = $1
+WHERE CASE WHEN $2::boolean
+           THEN l.deleted_at > $3::timestamptz
+           ELSE l.deleted_at IS NULL END
+ORDER BY l.position, l.id
+`
+
+type ListListsForUserParams struct {
+	UserID          uuid.UUID
+	Trash           bool
+	RestorableSince time.Time
+}
+
+type ListListsForUserRow struct {
+	List List
+	Role string
+}
+
+// Live lists, or with trash set, the lists deleted after restorable_since.
+func (q *Queries) ListListsForUser(ctx context.Context, arg ListListsForUserParams) ([]ListListsForUserRow, error) {
+	rows, err := q.db.Query(ctx, listListsForUser, arg.UserID, arg.Trash, arg.RestorableSince)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListListsForUserRow
+	for rows.Next() {
+		var i ListListsForUserRow
+		if err := rows.Scan(
+			&i.List.ID,
+			&i.List.OwnerID,
+			&i.List.Name,
+			&i.List.Color,
+			&i.List.Position,
+			&i.List.IsInbox,
+			&i.List.Version,
+			&i.List.Seq,
+			&i.List.CreatedAt,
+			&i.List.UpdatedAt,
+			&i.List.DeletedAt,
+			&i.Role,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lockListForUser = `-- name: LockListForUser :one
+SELECT l.id, l.owner_id, l.name, l.color, l.position, l.is_inbox, l.version, l.seq, l.created_at, l.updated_at, l.deleted_at, m.role
+FROM lists l
+JOIN list_members m ON m.list_id = l.id AND m.user_id = $1
+WHERE l.id = $2
+FOR UPDATE OF l
+`
+
+type LockListForUserParams struct {
+	UserID uuid.UUID
+	ID     uuid.UUID
+}
+
+type LockListForUserRow struct {
+	List List
+	Role string
+}
+
+// Same as GetListForUser, locking the list until the transaction ends.
+func (q *Queries) LockListForUser(ctx context.Context, arg LockListForUserParams) (LockListForUserRow, error) {
+	row := q.db.QueryRow(ctx, lockListForUser, arg.UserID, arg.ID)
+	var i LockListForUserRow
+	err := row.Scan(
+		&i.List.ID,
+		&i.List.OwnerID,
+		&i.List.Name,
+		&i.List.Color,
+		&i.List.Position,
+		&i.List.IsInbox,
+		&i.List.Version,
+		&i.List.Seq,
+		&i.List.CreatedAt,
+		&i.List.UpdatedAt,
+		&i.List.DeletedAt,
+		&i.Role,
+	)
+	return i, err
+}
+
+const lockLiveListForShare = `-- name: LockLiveListForShare :one
+SELECT l.id
+FROM lists l
+JOIN list_members m ON m.list_id = l.id AND m.user_id = $1
+WHERE l.id = $2 AND l.deleted_at IS NULL
+FOR SHARE OF l
+`
+
+type LockLiveListForShareParams struct {
+	UserID uuid.UUID
+	ID     uuid.UUID
+}
+
+// The target list of a task being created or moved: it must be live and the
+// user's. FOR SHARE keeps it from being deleted until the task is written,
+// so a task never lands in a list deleted concurrently.
+func (q *Queries) LockLiveListForShare(ctx context.Context, arg LockLiveListForShareParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, lockLiveListForShare, arg.UserID, arg.ID)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
+const lockLiveTaskIDsInList = `-- name: LockLiveTaskIDsInList :many
+SELECT id FROM tasks WHERE list_id = $1 AND deleted_at IS NULL ORDER BY id FOR UPDATE
+`
+
+func (q *Queries) LockLiveTaskIDsInList(ctx context.Context, listID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, lockLiveTaskIDsInList, listID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lockTaskIDsDeletedWithList = `-- name: LockTaskIDsDeletedWithList :many
+SELECT id FROM tasks WHERE deleted_with_list_id = $1 ORDER BY id FOR UPDATE
+`
+
+func (q *Queries) LockTaskIDsDeletedWithList(ctx context.Context, listID *uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, lockTaskIDsDeletedWithList, listID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const restoreTasksWithList = `-- name: RestoreTasksWithList :exec
+UPDATE tasks t
+SET deleted_at = NULL, deleted_with_list_id = NULL, version = t.version + 1,
+    seq = v.seq, updated_at = $1
+FROM (SELECT unnest($2::uuid[]) AS id, unnest($3::bigint[]) AS seq) AS v
+WHERE t.id = v.id
+`
+
+type RestoreTasksWithListParams struct {
+	Now  time.Time
+	Ids  []uuid.UUID
+	Seqs []int64
+}
+
+// Two unnest calls in one SELECT list advance together, pairing ids[i]
+// with seqs[i].
+func (q *Queries) RestoreTasksWithList(ctx context.Context, arg RestoreTasksWithListParams) error {
+	_, err := q.db.Exec(ctx, restoreTasksWithList, arg.Now, arg.Ids, arg.Seqs)
+	return err
+}
+
+const updateList = `-- name: UpdateList :exec
+UPDATE lists
+SET name = $1, color = $2, position = $3, version = $4, seq = $5,
+    updated_at = $6, deleted_at = $7
+WHERE id = $8
+`
+
+type UpdateListParams struct {
+	Name      string
+	Color     *string
+	Position  string
+	Version   int32
+	Seq       int64
+	UpdatedAt time.Time
+	DeletedAt *time.Time
+	ID        uuid.UUID
+}
+
+func (q *Queries) UpdateList(ctx context.Context, arg UpdateListParams) error {
+	_, err := q.db.Exec(ctx, updateList,
+		arg.Name,
+		arg.Color,
+		arg.Position,
+		arg.Version,
+		arg.Seq,
+		arg.UpdatedAt,
+		arg.DeletedAt,
+		arg.ID,
+	)
 	return err
 }

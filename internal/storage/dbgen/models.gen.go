@@ -87,7 +87,7 @@ type Task struct {
 	Status              string
 	Priority            int16
 	Position            string
-	DueDate             pgtype.Date
+	DueDate             *time.Time
 	DueTime             pgtype.Time
 	DueTz               *string
 	Rrule               *string
@@ -95,7 +95,7 @@ type Task struct {
 	RecurrenceDoneCount int32
 	CompletedAt         *time.Time
 	TagIds              []uuid.UUID
-	DeletedWithListID   pgtype.UUID
+	DeletedWithListID   *uuid.UUID
 	Version             int32
 	Seq                 int64
 	CreatedAt           time.Time
@@ -107,9 +107,9 @@ type TaskCompletion struct {
 	ID                      uuid.UUID
 	TaskID                  uuid.UUID
 	Kind                    string
-	OccurrenceDueDate       pgtype.Date
+	OccurrenceDueDate       *time.Time
 	CompletedAt             time.Time
-	PrevDueDate             pgtype.Date
+	PrevDueDate             *time.Time
 	PrevDueTime             pgtype.Time
 	PrevRecurrenceDoneCount int32
 	PrevStatus              string

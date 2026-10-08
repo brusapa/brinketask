@@ -7,6 +7,8 @@ package dbgen
 
 import (
 	"context"
+
+	"github.com/google/uuid"
 )
 
 const getSyncState = `-- name: GetSyncState :one
@@ -53,4 +55,284 @@ func (q *Queries) ReserveSeqs(ctx context.Context, n int64) (int64, error) {
 	var seq int64
 	err := row.Scan(&seq)
 	return seq, err
+}
+
+const syncChecklistItems = `-- name: SyncChecklistItems :many
+SELECT c.id, c.task_id, c.title, c.is_done, c.position, c.version, c.seq, c.created_at, c.updated_at, c.deleted_at FROM checklist_items c
+JOIN tasks t ON t.id = c.task_id
+JOIN list_members m ON m.list_id = t.list_id AND m.user_id = $1
+WHERE c.seq > $2 AND c.seq <= $3
+  AND (NOT $4::boolean OR (c.deleted_at IS NULL AND t.deleted_at IS NULL))
+ORDER BY c.seq
+`
+
+type SyncChecklistItemsParams struct {
+	UserID   uuid.UUID
+	After    int64
+	Upper    int64
+	LiveOnly bool
+}
+
+func (q *Queries) SyncChecklistItems(ctx context.Context, arg SyncChecklistItemsParams) ([]ChecklistItem, error) {
+	rows, err := q.db.Query(ctx, syncChecklistItems,
+		arg.UserID,
+		arg.After,
+		arg.Upper,
+		arg.LiveOnly,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ChecklistItem
+	for rows.Next() {
+		var i ChecklistItem
+		if err := rows.Scan(
+			&i.ID,
+			&i.TaskID,
+			&i.Title,
+			&i.IsDone,
+			&i.Position,
+			&i.Version,
+			&i.Seq,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const syncLists = `-- name: SyncLists :many
+SELECT l.id, l.owner_id, l.name, l.color, l.position, l.is_inbox, l.version, l.seq, l.created_at, l.updated_at, l.deleted_at, m.role FROM lists l
+JOIN list_members m ON m.list_id = l.id AND m.user_id = $1
+WHERE l.seq > $2 AND l.seq <= $3 AND (NOT $4::boolean OR l.deleted_at IS NULL)
+ORDER BY l.seq
+`
+
+type SyncListsParams struct {
+	UserID   uuid.UUID
+	After    int64
+	Upper    int64
+	LiveOnly bool
+}
+
+type SyncListsRow struct {
+	List List
+	Role string
+}
+
+func (q *Queries) SyncLists(ctx context.Context, arg SyncListsParams) ([]SyncListsRow, error) {
+	rows, err := q.db.Query(ctx, syncLists,
+		arg.UserID,
+		arg.After,
+		arg.Upper,
+		arg.LiveOnly,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SyncListsRow
+	for rows.Next() {
+		var i SyncListsRow
+		if err := rows.Scan(
+			&i.List.ID,
+			&i.List.OwnerID,
+			&i.List.Name,
+			&i.List.Color,
+			&i.List.Position,
+			&i.List.IsInbox,
+			&i.List.Version,
+			&i.List.Seq,
+			&i.List.CreatedAt,
+			&i.List.UpdatedAt,
+			&i.List.DeletedAt,
+			&i.Role,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const syncPageSeqs = `-- name: SyncPageSeqs :many
+
+SELECT s.seq FROM (
+    SELECT l.seq FROM lists l
+    JOIN list_members m ON m.list_id = l.id AND m.user_id = $1
+    WHERE l.seq > $2 AND (NOT $3::boolean OR l.deleted_at IS NULL)
+    UNION ALL
+    SELECT t.seq FROM tasks t
+    JOIN list_members m ON m.list_id = t.list_id AND m.user_id = $1
+    WHERE t.seq > $2 AND (NOT $3::boolean OR t.deleted_at IS NULL)
+    UNION ALL
+    SELECT c.seq FROM checklist_items c
+    JOIN tasks t ON t.id = c.task_id
+    JOIN list_members m ON m.list_id = t.list_id AND m.user_id = $1
+    WHERE c.seq > $2
+      AND (NOT $3::boolean OR (c.deleted_at IS NULL AND t.deleted_at IS NULL))
+    UNION ALL
+    SELECT g.seq FROM tags g
+    WHERE g.owner_id = $1 AND g.seq > $2
+      AND (NOT $3::boolean OR g.deleted_at IS NULL)
+) s
+ORDER BY s.seq
+LIMIT $4
+`
+
+type SyncPageSeqsParams struct {
+	UserID   uuid.UUID
+	After    int64
+	LiveOnly bool
+	Lim      int32
+}
+
+// The /sync/changes queries (SPEC section 8). A page holds the rows with
+// after < seq <= upper; SyncPageSeqs finds upper. With live_only (no
+// cursor: the full live state) tombstones are left out, and so are the
+// items of deleted tasks.
+func (q *Queries) SyncPageSeqs(ctx context.Context, arg SyncPageSeqsParams) ([]int64, error) {
+	rows, err := q.db.Query(ctx, syncPageSeqs,
+		arg.UserID,
+		arg.After,
+		arg.LiveOnly,
+		arg.Lim,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var seq int64
+		if err := rows.Scan(&seq); err != nil {
+			return nil, err
+		}
+		items = append(items, seq)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const syncTags = `-- name: SyncTags :many
+SELECT id, owner_id, name, color, version, seq, created_at, updated_at, deleted_at FROM tags
+WHERE owner_id = $1 AND seq > $2 AND seq <= $3
+  AND (NOT $4::boolean OR deleted_at IS NULL)
+ORDER BY seq
+`
+
+type SyncTagsParams struct {
+	UserID   uuid.UUID
+	After    int64
+	Upper    int64
+	LiveOnly bool
+}
+
+func (q *Queries) SyncTags(ctx context.Context, arg SyncTagsParams) ([]Tag, error) {
+	rows, err := q.db.Query(ctx, syncTags,
+		arg.UserID,
+		arg.After,
+		arg.Upper,
+		arg.LiveOnly,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Tag
+	for rows.Next() {
+		var i Tag
+		if err := rows.Scan(
+			&i.ID,
+			&i.OwnerID,
+			&i.Name,
+			&i.Color,
+			&i.Version,
+			&i.Seq,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const syncTasks = `-- name: SyncTasks :many
+SELECT t.id, t.list_id, t.title, t.description, t.status, t.priority, t.position, t.due_date, t.due_time, t.due_tz, t.rrule, t.repeat_from, t.recurrence_done_count, t.completed_at, t.tag_ids, t.deleted_with_list_id, t.version, t.seq, t.created_at, t.updated_at, t.deleted_at FROM tasks t
+JOIN list_members m ON m.list_id = t.list_id AND m.user_id = $1
+WHERE t.seq > $2 AND t.seq <= $3 AND (NOT $4::boolean OR t.deleted_at IS NULL)
+ORDER BY t.seq
+`
+
+type SyncTasksParams struct {
+	UserID   uuid.UUID
+	After    int64
+	Upper    int64
+	LiveOnly bool
+}
+
+func (q *Queries) SyncTasks(ctx context.Context, arg SyncTasksParams) ([]Task, error) {
+	rows, err := q.db.Query(ctx, syncTasks,
+		arg.UserID,
+		arg.After,
+		arg.Upper,
+		arg.LiveOnly,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Task
+	for rows.Next() {
+		var i Task
+		if err := rows.Scan(
+			&i.ID,
+			&i.ListID,
+			&i.Title,
+			&i.Description,
+			&i.Status,
+			&i.Priority,
+			&i.Position,
+			&i.DueDate,
+			&i.DueTime,
+			&i.DueTz,
+			&i.Rrule,
+			&i.RepeatFrom,
+			&i.RecurrenceDoneCount,
+			&i.CompletedAt,
+			&i.TagIds,
+			&i.DeletedWithListID,
+			&i.Version,
+			&i.Seq,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
