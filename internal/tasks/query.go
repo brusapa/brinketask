@@ -81,7 +81,7 @@ func (s *Service) QueryTasks(ctx context.Context, userID uuid.UUID, query TaskQu
 	}
 	// One row more than asked tells whether another page follows.
 	limit := int32(query.Limit) + 1 //nolint:gosec // G115: the contract caps limit at 500
-	restorableSince := s.clock.Now().Add(-RestoreWindow)
+	restorableSince := s.now().Add(-RestoreWindow)
 
 	var rows []dbgen.Task
 	// cursorOf builds the cursor that continues after a given task, for the

@@ -32,7 +32,7 @@ func (s *Service) Lists(ctx context.Context, userID uuid.UUID, trash bool) ([]Li
 	rows, err := dbgen.New(s.pool).ListListsForUser(ctx, dbgen.ListListsForUserParams{
 		UserID:          userID,
 		Trash:           trash,
-		RestorableSince: s.clock.Now().Add(-RestoreWindow),
+		RestorableSince: s.now().Add(-RestoreWindow),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("tasks: list lists: %w", err)
@@ -81,7 +81,7 @@ func (s *Service) CreateList(ctx context.Context, userID uuid.UUID, in NewList) 
 				return conflict("the id belongs to another user's list")
 			}
 
-			now := s.clock.Now()
+			now := s.now()
 			seq, err := q.NextSeq(ctx)
 			if err != nil {
 				return err
@@ -180,7 +180,7 @@ func (s *Service) DeleteList(ctx context.Context, userID, id uuid.UUID) error {
 		if err != nil {
 			return err
 		}
-		now := s.clock.Now()
+		now := s.now()
 		updated := row.List
 		updated.DeletedAt = &now
 		if err := s.writeList(ctx, q, &updated); err != nil {
@@ -218,7 +218,7 @@ func (s *Service) RestoreList(ctx context.Context, userID, id uuid.UUID) (List, 
 		if row.List.DeletedAt == nil {
 			return nil
 		}
-		now := s.clock.Now()
+		now := s.now()
 		if !restorable(*row.List.DeletedAt, now) {
 			return conflict("the list was deleted more than 30 days ago")
 		}
@@ -257,7 +257,7 @@ func (s *Service) writeList(ctx context.Context, q *dbgen.Queries, list *dbgen.L
 	}
 	list.Version++
 	list.Seq = seq
-	list.UpdatedAt = s.clock.Now()
+	list.UpdatedAt = s.now()
 	return q.UpdateList(ctx, dbgen.UpdateListParams{
 		ID: list.ID, Name: list.Name, Color: list.Color, Position: list.Position,
 		Version: list.Version, Seq: list.Seq, UpdatedAt: list.UpdatedAt, DeletedAt: list.DeletedAt,

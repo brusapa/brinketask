@@ -144,7 +144,7 @@ func (s *Service) CreateTask(ctx context.Context, userID uuid.UUID, in NewTask) 
 				}
 			}
 
-			now := s.clock.Now()
+			now := s.now()
 			seqs, err := reserveSeqs(ctx, q, 1+len(in.Checklist))
 			if err != nil {
 				return err
@@ -305,7 +305,7 @@ func (s *Service) DeleteTask(ctx context.Context, userID, id uuid.UUID) error {
 		if current.DeletedAt != nil {
 			return nil
 		}
-		now := s.clock.Now()
+		now := s.now()
 		current.DeletedAt = &now
 		return s.writeTask(ctx, q, &current)
 	})
@@ -340,7 +340,7 @@ func (s *Service) RestoreTask(ctx context.Context, userID, id uuid.UUID) (Task, 
 		if !listLive {
 			return conflict("the task's list is deleted")
 		}
-		if !restorable(*current.DeletedAt, s.clock.Now()) {
+		if !restorable(*current.DeletedAt, s.now()) {
 			return conflict("the task was deleted more than 30 days ago")
 		}
 		current.DeletedAt = nil
@@ -430,7 +430,7 @@ func (s *Service) writeTask(ctx context.Context, q *dbgen.Queries, task *dbgen.T
 	}
 	task.Version++
 	task.Seq = seq
-	task.UpdatedAt = s.clock.Now()
+	task.UpdatedAt = s.now()
 	return q.UpdateTask(ctx, dbgen.UpdateTaskParams{
 		ID: task.ID, ListID: task.ListID, Title: task.Title, Description: task.Description,
 		Status: task.Status, Priority: task.Priority, Position: task.Position,

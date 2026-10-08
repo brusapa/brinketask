@@ -65,7 +65,7 @@ func (s *Service) CreateTag(ctx context.Context, userID uuid.UUID, in NewTag) (T
 				return err
 			}
 
-			now := s.clock.Now()
+			now := s.now()
 			seq, err := q.NextSeq(ctx)
 			if err != nil {
 				return err
@@ -150,7 +150,7 @@ func (s *Service) DeleteTag(ctx context.Context, userID, id uuid.UUID) error {
 		if err != nil {
 			return err
 		}
-		now := s.clock.Now()
+		now := s.now()
 		updated := current
 		updated.DeletedAt = &now
 		if err := s.writeTag(ctx, q, &updated); err != nil {
@@ -191,7 +191,7 @@ func (s *Service) writeTag(ctx context.Context, q *dbgen.Queries, tag *dbgen.Tag
 	}
 	tag.Version++
 	tag.Seq = seq
-	tag.UpdatedAt = s.clock.Now()
+	tag.UpdatedAt = s.now()
 	err = q.UpdateTag(ctx, dbgen.UpdateTagParams{
 		ID: tag.ID, Name: tag.Name, Color: tag.Color, Version: tag.Version, Seq: tag.Seq,
 		UpdatedAt: tag.UpdatedAt, DeletedAt: tag.DeletedAt,

@@ -132,7 +132,7 @@ func (s *Service) Complete(ctx context.Context, userID, taskID uuid.UUID, in Com
 			return err
 		}
 
-		now := s.clock.Now()
+		now := s.now()
 		completedAt := now
 		if in.CompletedAt != nil && in.CompletedAt.Before(now) {
 			completedAt = *in.CompletedAt
@@ -217,7 +217,7 @@ func (s *Service) Uncomplete(ctx context.Context, userID, taskID, completionID u
 		if err := s.writeTask(ctx, q, &task); err != nil {
 			return err
 		}
-		now := s.clock.Now()
+		now := s.now()
 		if err := q.MarkCompletionUndone(ctx, dbgen.MarkCompletionUndoneParams{ID: completionID, Now: &now}); err != nil {
 			return err
 		}

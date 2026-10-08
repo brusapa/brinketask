@@ -47,7 +47,7 @@ func (s *Service) CreateChecklistItem(ctx context.Context, userID, taskID uuid.U
 				return conflict("the id belongs to another user's checklist item")
 			}
 
-			now := s.clock.Now()
+			now := s.now()
 			seq, err := q.NextSeq(ctx)
 			if err != nil {
 				return err
@@ -127,7 +127,7 @@ func (s *Service) DeleteChecklistItem(ctx context.Context, userID, id uuid.UUID)
 			return nil
 		}
 		item := row.ChecklistItem
-		now := s.clock.Now()
+		now := s.now()
 		item.DeletedAt = &now
 		return s.writeChecklistItem(ctx, q, &item)
 	})
@@ -143,7 +143,7 @@ func (s *Service) writeChecklistItem(ctx context.Context, q *dbgen.Queries, item
 	}
 	item.Version++
 	item.Seq = seq
-	item.UpdatedAt = s.clock.Now()
+	item.UpdatedAt = s.now()
 	return q.UpdateChecklistItem(ctx, dbgen.UpdateChecklistItemParams{
 		ID: item.ID, Title: item.Title, IsDone: item.IsDone, Position: item.Position,
 		Version: item.Version, Seq: item.Seq, UpdatedAt: item.UpdatedAt, DeletedAt: item.DeletedAt,

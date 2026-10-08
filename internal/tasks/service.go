@@ -96,3 +96,10 @@ func constraintOf(err error) string {
 	}
 	return ""
 }
+
+// now reads the injected clock at PostgreSQL's precision. timestamptz keeps
+// microseconds, so a time written and returned in the same response must
+// not carry nanoseconds that a later read would not show.
+func (s *Service) now() time.Time {
+	return s.clock.Now().Truncate(time.Microsecond)
+}

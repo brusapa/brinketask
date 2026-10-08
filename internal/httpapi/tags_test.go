@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -183,5 +184,20 @@ func TestTagsOfOthersAreNotFound(t *testing.T) {
 	page := decode[ListTags200JSONResponse](t, a.call(t, bob, http.MethodGet, "/tags", ""), http.StatusOK)
 	if len(page.Items) != 0 {
 		t.Errorf("bob sees %d tags", len(page.Items))
+	}
+}
+
+// Times in a write's response are those a later read returns: PostgreSQL
+// keeps microseconds, so nanoseconds of the clock must not leak out.
+func TestWriteResponsesMatchLaterReads(t *testing.T) {
+	a := newTestApp(t)
+	alice := a.signUp(t, "alice")
+	a.clock.Advance(123456789 * time.Nanosecond)
+
+	created := a.createTag(t, alice, "work")
+	page := decode[ListTags200JSONResponse](t, a.call(t, alice, http.MethodGet, "/tags", ""), http.StatusOK)
+	if !page.Items[0].CreatedAt.Equal(*created.CreatedAt) || !page.Items[0].UpdatedAt.Equal(*created.UpdatedAt) {
+		t.Errorf("created_at %v / updated_at %v in the response, %v / %v on read",
+			created.CreatedAt, created.UpdatedAt, page.Items[0].CreatedAt, page.Items[0].UpdatedAt)
 	}
 }
