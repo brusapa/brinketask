@@ -86,3 +86,13 @@ func reserveSeqs(ctx context.Context, q *dbgen.Queries, n int) ([]int64, error) 
 	}
 	return seqs, nil
 }
+
+// constraintOf returns the name of the constraint a PostgreSQL error is
+// about, or "".
+func constraintOf(err error) string {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		return pgErr.ConstraintName
+	}
+	return ""
+}

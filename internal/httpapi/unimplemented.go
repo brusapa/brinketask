@@ -56,22 +56,6 @@ func (Server) GetChanges(context.Context, GetChangesRequestObject) (GetChangesRe
 	return GetChangesdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
 }
 
-func (Server) ListTags(context.Context, ListTagsRequestObject) (ListTagsResponseObject, error) {
-	return ListTagsdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
-}
-
-func (Server) CreateTag(context.Context, CreateTagRequestObject) (CreateTagResponseObject, error) {
-	return CreateTagdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
-}
-
-func (Server) DeleteTag(context.Context, DeleteTagRequestObject) (DeleteTagResponseObject, error) {
-	return DeleteTagdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
-}
-
-func (Server) PatchTag(context.Context, PatchTagRequestObject) (PatchTagResponseObject, error) {
-	return PatchTagdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
-}
-
 func (Server) ListTasks(context.Context, ListTasksRequestObject) (ListTasksResponseObject, error) {
 	return ListTasksdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
 }

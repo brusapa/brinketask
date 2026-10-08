@@ -54,3 +54,16 @@ func nullableToPointer[T any](n nullable.Nullable[T]) *T {
 	value := n.MustGet()
 	return &value
 }
+
+func tagToAPI(t tasks.Tag) Tag {
+	version := int(t.Version)
+	return Tag{
+		Id:        t.ID,
+		Name:      t.Name,
+		Color:     pointerToNullable(t.Color),
+		Version:   &version,
+		CreatedAt: timePointer(t.CreatedAt),
+		UpdatedAt: timePointer(t.UpdatedAt),
+		DeletedAt: pointerToNullable(t.DeletedAt),
+	}
+}
