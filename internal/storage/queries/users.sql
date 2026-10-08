@@ -27,3 +27,18 @@ SELECT l.id
 FROM lists l
 JOIN list_members m ON m.list_id = l.id
 WHERE m.user_id = @user_id AND m.role = 'owner' AND l.is_inbox AND l.owner_id = @user_id;
+
+-- name: UpdateUserSettings :one
+-- Merge patch of the profile settings (D-05): a NULL argument leaves its
+-- column alone. updated_at only moves when a value actually changes.
+UPDATE users
+SET timezone              = coalesce(sqlc.narg(timezone), timezone),
+    all_day_reminder_time = coalesce(sqlc.narg(all_day_reminder_time), all_day_reminder_time),
+    updated_at = CASE
+        WHEN coalesce(sqlc.narg(timezone), timezone) IS DISTINCT FROM timezone
+          OR coalesce(sqlc.narg(all_day_reminder_time), all_day_reminder_time) IS DISTINCT FROM all_day_reminder_time
+        THEN @now
+        ELSE updated_at
+    END
+WHERE id = @id
+RETURNING *;

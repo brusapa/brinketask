@@ -75,7 +75,8 @@ func run() error {
 	mux := http.NewServeMux()
 	// Order matters: the CSRF check needs nothing, the rate limit needs the
 	// session that Authenticate resolves.
-	err = httpapi.Register(mux, httpapi.Server{}, logger,
+	accounts := account.NewService(pool, clk)
+	err = httpapi.Register(mux, httpapi.NewServer(accounts), logger,
 		sameOrigin,
 		httpapi.Authenticate(sessions, logger),
 		httpapi.RateLimit(limiter),
@@ -83,7 +84,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	auth.NewHandler(cfg.OIDC, cfg.PublicURL, pool, clk, account.NewService(pool, clk), sessions, logger).
+	auth.NewHandler(cfg.OIDC, cfg.PublicURL, pool, clk, accounts, sessions, logger).
 		Register(mux, sameOrigin)
 	health.Register(mux, pool, logger)
 

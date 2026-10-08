@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const getInboxID = `-- name: GetInboxID :one
@@ -34,6 +35,51 @@ SELECT id, oidc_issuer, oidc_subject, email, display_name, timezone, all_day_rem
 
 func (q *Queries) GetUser(ctx context.Context, id uuid.UUID) (User, error) {
 	row := q.db.QueryRow(ctx, getUser, id)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.OidcIssuer,
+		&i.OidcSubject,
+		&i.Email,
+		&i.DisplayName,
+		&i.Timezone,
+		&i.AllDayReminderTime,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateUserSettings = `-- name: UpdateUserSettings :one
+UPDATE users
+SET timezone              = coalesce($1, timezone),
+    all_day_reminder_time = coalesce($2, all_day_reminder_time),
+    updated_at = CASE
+        WHEN coalesce($1, timezone) IS DISTINCT FROM timezone
+          OR coalesce($2, all_day_reminder_time) IS DISTINCT FROM all_day_reminder_time
+        THEN $3
+        ELSE updated_at
+    END
+WHERE id = $4
+RETURNING id, oidc_issuer, oidc_subject, email, display_name, timezone, all_day_reminder_time, created_at, updated_at
+`
+
+type UpdateUserSettingsParams struct {
+	Timezone           *string
+	AllDayReminderTime pgtype.Time
+	Now                time.Time
+	ID                 uuid.UUID
+}
+
+// Merge patch of the profile settings (D-05): a NULL argument leaves its
+// column alone. updated_at only moves when a value actually changes.
+func (q *Queries) UpdateUserSettings(ctx context.Context, arg UpdateUserSettingsParams) (User, error) {
+	row := q.db.QueryRow(ctx, updateUserSettings,
+		arg.Timezone,
+		arg.AllDayReminderTime,
+		arg.Now,
+		arg.ID,
+	)
 	var i User
 	err := row.Scan(
 		&i.ID,

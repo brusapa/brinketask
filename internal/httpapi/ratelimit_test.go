@@ -26,7 +26,7 @@ func TestRateLimitPerSession(t *testing.T) {
 	clk := clock.NewFixed(time.Date(2026, time.October, 8, 9, 0, 0, 0, time.UTC))
 	limiter := NewRateLimiter(clk, RequestsPerSecond, RequestBurst)
 	mux := http.NewServeMux()
-	err := Register(mux, Server{}, discardLogger, Authenticate(twoSessions{}, discardLogger), RateLimit(limiter))
+	err := Register(mux, whoAmIServer{}, discardLogger, Authenticate(twoSessions{}, discardLogger), RateLimit(limiter))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -21,28 +21,28 @@ func TestSameOrigin(t *testing.T) {
 		headers map[string]string
 		allowed bool
 	}{
-		{"same origin per Sec-Fetch-Site", http.MethodPatch, map[string]string{"Sec-Fetch-Site": "same-origin"}, true},
-		{"cross site per Sec-Fetch-Site", http.MethodPatch, map[string]string{"Sec-Fetch-Site": "cross-site"}, false},
+		{"same origin per Sec-Fetch-Site", http.MethodDelete, map[string]string{"Sec-Fetch-Site": "same-origin"}, true},
+		{"cross site per Sec-Fetch-Site", http.MethodDelete, map[string]string{"Sec-Fetch-Site": "cross-site"}, false},
 		// Another subdomain of the same site is still another origin.
-		{"same site per Sec-Fetch-Site", http.MethodPatch, map[string]string{"Sec-Fetch-Site": "same-site"}, false},
-		{"other origin, older browser", http.MethodPatch, map[string]string{"Origin": "https://evil.example.com"}, false},
-		{"public origin, older browser", http.MethodPatch, map[string]string{"Origin": "https://tasks.example.com"}, true},
-		{"no browser headers (curl)", http.MethodPatch, nil, true},
+		{"same site per Sec-Fetch-Site", http.MethodDelete, map[string]string{"Sec-Fetch-Site": "same-site"}, false},
+		{"other origin, older browser", http.MethodDelete, map[string]string{"Origin": "https://evil.example.com"}, false},
+		{"public origin, older browser", http.MethodDelete, map[string]string{"Origin": "https://tasks.example.com"}, true},
+		{"no browser headers (curl)", http.MethodDelete, nil, true},
 		{"cross-site GET is safe", http.MethodGet, map[string]string{"Sec-Fetch-Site": "cross-site"}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			body, contentType := "", ""
-			if tt.method == http.MethodPatch {
-				body, contentType = `{"timezone":"Europe/Madrid"}`, mergePatchType
+			// Both operations are still stubs, so an allowed request gets 501.
+			path := "https://tasks.example.com/api/v1/lists"
+			if tt.method == http.MethodDelete {
+				path = "https://tasks.example.com/api/v1/tasks/" + someID
 			}
-			req := newRequest(t, tt.method, "https://tasks.example.com/api/v1/me", contentType, body)
+			req := newRequest(t, tt.method, path, "", "")
 			for name, value := range tt.headers {
 				req.Header.Set(name, value)
 			}
 			rec := serve(t, mux, req)
 			if tt.allowed {
-				// The stub behind it answers 501.
 				decodeProblem(t, rec, http.StatusNotImplemented, ProblemCodeNotImplemented)
 			} else {
 				decodeProblem(t, rec, http.StatusForbidden, ProblemCodeForbidden)

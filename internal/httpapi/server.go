@@ -15,8 +15,16 @@ import (
 const BaseURL = "/api/v1"
 
 // Server implements the generated StrictServerInterface: one method per
-// operation of the contract.
-type Server struct{}
+// operation of the contract. The zero value answers 501 for everything not
+// implemented yet, which the routing tests use.
+type Server struct {
+	accounts Accounts
+}
+
+// NewServer returns the API implementation.
+func NewServer(accounts Accounts) Server {
+	return Server{accounts: accounts}
+}
 
 // This line does not run anything; it makes compilation fail if Server stops
 // satisfying the interface, e.g. after the contract gains an operation.

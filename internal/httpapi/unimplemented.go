@@ -48,14 +48,6 @@ func (Server) RestoreList(context.Context, RestoreListRequestObject) (RestoreLis
 	return RestoreListdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
 }
 
-func (Server) GetMe(context.Context, GetMeRequestObject) (GetMeResponseObject, error) {
-	return GetMedefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
-}
-
-func (Server) PatchMe(context.Context, PatchMeRequestObject) (PatchMeResponseObject, error) {
-	return PatchMedefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
-}
-
 func (Server) ListPushSubscriptions(context.Context, ListPushSubscriptionsRequestObject) (ListPushSubscriptionsResponseObject, error) {
 	return ListPushSubscriptionsdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
 }
