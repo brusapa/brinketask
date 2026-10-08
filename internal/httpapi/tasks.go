@@ -155,3 +155,45 @@ func (s Server) RestoreTask(ctx context.Context, request RestoreTaskRequestObjec
 	}
 	return RestoreTask200JSONResponse(taskToAPI(task, true)), nil
 }
+
+// defaultLimit is the contract's default page size.
+const defaultLimit = 100
+
+// ListTasks returns one page of the caller's tasks.
+func (s Server) ListTasks(ctx context.Context, request ListTasksRequestObject) (ListTasksResponseObject, error) {
+	userID, err := callerID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	params := request.Params
+	query := tasks.TaskQuery{
+		ListID:    params.ListId,
+		TagID:     params.TagId,
+		DueFrom:   dateFromAPI(params.DueFrom),
+		DueTo:     dateFromAPI(params.DueTo),
+		Search:    params.Q,
+		SortByDue: params.Sort != nil && *params.Sort == ListTasksParamsSortDue,
+		Trash:     params.Deleted != nil && *params.Deleted,
+		Cursor:    params.Cursor,
+		Limit:     defaultLimit,
+	}
+	if params.Status != nil {
+		status := string(*params.Status)
+		query.Status = &status
+	}
+	if params.Limit != nil {
+		query.Limit = *params.Limit
+	}
+	found, next, err := s.tasks.QueryTasks(ctx, userID, query)
+	if problem, ok := domainProblem(err); ok {
+		return ListTasksdefaultApplicationProblemPlusJSONResponse(toResponse(problem)), nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	items := make([]Task, len(found))
+	for i, t := range found {
+		items[i] = taskToAPI(t, true)
+	}
+	return ListTasks200JSONResponse{Items: items, NextCursor: pointerToNullable(next)}, nil
+}

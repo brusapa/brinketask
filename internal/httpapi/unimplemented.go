@@ -48,10 +48,6 @@ func (Server) GetChanges(context.Context, GetChangesRequestObject) (GetChangesRe
 	return GetChangesdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
 }
 
-func (Server) ListTasks(context.Context, ListTasksRequestObject) (ListTasksResponseObject, error) {
-	return ListTasksdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
-}
-
 func (Server) CompleteTask(context.Context, CompleteTaskRequestObject) (CompleteTaskResponseObject, error) {
 	return CompleteTaskdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
 }
