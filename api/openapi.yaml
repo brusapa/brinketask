@@ -2,6 +2,9 @@ openapi: 3.0.3
 info:
   title: brinketask API
   version: 1.0.0-draft
+  license:
+    name: MIT
+    url: https://opensource.org/license/mit
   description: |
     Tasks and reminders API. See SPEC.md for behaviour and design decisions (D-xx, R-x).
 
