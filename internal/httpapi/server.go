@@ -9,6 +9,7 @@ import (
 	"net/http"
 
 	"github.com/brusapa/brinketask/internal/httpapi/contract"
+	"github.com/brusapa/brinketask/internal/tasks"
 )
 
 // BaseURL is the prefix of every API route (`servers` in the contract).
@@ -19,11 +20,12 @@ const BaseURL = "/api/v1"
 // implemented yet, which the routing tests use.
 type Server struct {
 	accounts Accounts
+	tasks    *tasks.Service
 }
 
 // NewServer returns the API implementation.
-func NewServer(accounts Accounts) Server {
-	return Server{accounts: accounts}
+func NewServer(accounts Accounts, taskService *tasks.Service) Server {
+	return Server{accounts: accounts, tasks: taskService}
 }
 
 // This line does not run anything; it makes compilation fail if Server stops

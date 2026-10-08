@@ -26,6 +26,7 @@ import (
 	"github.com/brusapa/brinketask/internal/httpapi"
 	"github.com/brusapa/brinketask/internal/session"
 	"github.com/brusapa/brinketask/internal/storage"
+	"github.com/brusapa/brinketask/internal/tasks"
 )
 
 // shutdownTimeout bounds how long in-flight requests may run after SIGTERM.
@@ -76,7 +77,8 @@ func run() error {
 	// Order matters: the CSRF check needs nothing, the rate limit needs the
 	// session that Authenticate resolves.
 	accounts := account.NewService(pool, clk)
-	err = httpapi.Register(mux, httpapi.NewServer(accounts), logger,
+	taskService := tasks.NewService(pool, clk)
+	err = httpapi.Register(mux, httpapi.NewServer(accounts, taskService), logger,
 		sameOrigin,
 		httpapi.Authenticate(sessions, logger),
 		httpapi.RateLimit(limiter),

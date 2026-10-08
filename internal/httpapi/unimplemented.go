@@ -24,30 +24,6 @@ func (Server) ListCompletions(context.Context, ListCompletionsRequestObject) (Li
 	return ListCompletionsdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
 }
 
-func (Server) ListLists(context.Context, ListListsRequestObject) (ListListsResponseObject, error) {
-	return ListListsdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
-}
-
-func (Server) CreateList(context.Context, CreateListRequestObject) (CreateListResponseObject, error) {
-	return CreateListdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
-}
-
-func (Server) DeleteList(context.Context, DeleteListRequestObject) (DeleteListResponseObject, error) {
-	return DeleteListdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
-}
-
-func (Server) GetList(context.Context, GetListRequestObject) (GetListResponseObject, error) {
-	return GetListdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
-}
-
-func (Server) PatchList(context.Context, PatchListRequestObject) (PatchListResponseObject, error) {
-	return PatchListdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
-}
-
-func (Server) RestoreList(context.Context, RestoreListRequestObject) (RestoreListResponseObject, error) {
-	return RestoreListdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
-}
-
 func (Server) ListPushSubscriptions(context.Context, ListPushSubscriptionsRequestObject) (ListPushSubscriptionsResponseObject, error) {
 	return ListPushSubscriptionsdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
 }
