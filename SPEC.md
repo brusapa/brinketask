@@ -106,7 +106,7 @@ Conventions:
 | name | text | 1–200 characters |
 | color | text, nullable | `#RRGGBB` |
 | position | text | Fractional index |
-| is_inbox | bool | Exactly one per user; created at sign-up; cannot be deleted or renamed |
+| is_inbox | bool | Exactly one per user; created at sign-up; cannot be deleted or renamed. It is created with `name = "Inbox"`, an internal value: clients show their own translated label for it (section 9). Its `position` is `a0` |
 
 ### list_members
 
