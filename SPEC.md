@@ -268,7 +268,7 @@ Any other part is rejected with 422. The start of the series (`DTSTART`) is the 
 - Who may log in is decided in Pocket ID (allowed groups of the OIDC client). The app has no registration and no passwords.
 - Session: random opaque identifier in a `HttpOnly; Secure; SameSite=Lax` cookie; only its hash is stored in the database. Sliding expiry of 7 days and absolute expiry of 30 (configurable).
   - *Accepted trade-off*: a user revoked in Pocket ID keeps access until their session expires. Mitigation: delete their rows in `sessions`.
-- CSRF: cookie-authenticated state-changing requests must be same-origin (`Origin` / `Sec-Fetch-Site` check); otherwise 403.
+- CSRF: cookie-authenticated state-changing requests (anything but `GET`, `HEAD` and `OPTIONS`) from a browser must be same-origin; otherwise 403. The check is Go's `http.CrossOriginProtection`: `Sec-Fetch-Site` must be `same-origin` or `none`; for browsers that do not send it, `Origin` must match the `Host` header or `PUBLIC_URL`. A request with neither header cannot come from a web page, so it passes. It covers `/api/v1` and `POST /auth/logout`.
 - Authorization: every access to a list, task, item or reminder is validated against `list_members`. A resource belonging to someone else answers 404, not 403.
 - V2: the API will accept `Authorization: Bearer`. The concrete mechanism (validating Pocket ID tokens or issuing our own) is decided then; user resolution must live in a single middleware.
 

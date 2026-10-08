@@ -66,15 +66,25 @@ func run() error {
 	clk := clock.System{}
 	sessions := session.NewManager(pool, clk, cfg.SessionIdleTimeout, cfg.SessionMaxAge)
 
+	sameOrigin, err := httpapi.SameOrigin(cfg.PublicURL)
+	if err != nil {
+		return err
+	}
+	limiter := httpapi.NewRateLimiter(clk, httpapi.RequestsPerSecond, httpapi.RequestBurst)
+
 	mux := http.NewServeMux()
+	// Order matters: the CSRF check needs nothing, the rate limit needs the
+	// session that Authenticate resolves.
 	err = httpapi.Register(mux, httpapi.Server{}, logger,
+		sameOrigin,
 		httpapi.Authenticate(sessions, logger),
+		httpapi.RateLimit(limiter),
 	)
 	if err != nil {
 		return err
 	}
 	auth.NewHandler(cfg.OIDC, cfg.PublicURL, pool, clk, account.NewService(pool, clk), sessions, logger).
-		Register(mux)
+		Register(mux, sameOrigin)
 	health.Register(mux, pool, logger)
 
 	server := &http.Server{

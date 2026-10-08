@@ -19,6 +19,7 @@ import (
 	"github.com/brusapa/brinketask/internal/auth"
 	"github.com/brusapa/brinketask/internal/clock"
 	"github.com/brusapa/brinketask/internal/config"
+	"github.com/brusapa/brinketask/internal/httpapi"
 	"github.com/brusapa/brinketask/internal/session"
 	"github.com/brusapa/brinketask/internal/storage/storagetest"
 )
@@ -466,4 +467,41 @@ func mustQuery(t *testing.T, rawURL string) url.Values {
 		t.Fatal(err)
 	}
 	return u.Query()
+}
+
+// SPEC section 7: logout changes state, so a cross-origin POST is refused.
+// Otherwise any site could log the user out.
+func TestLogoutRejectsCrossOrigin(t *testing.T) {
+	a := newApp(t)
+	sameOrigin, err := httpapi.SameOrigin(publicURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A fresh mux, with logout behind the same-origin check as in main.
+	pool, clk := a.pool, a.clock
+	handler := auth.NewHandler(
+		config.OIDC{Issuer: a.idp.issuer(), ClientID: clientID, ClientSecret: clientSecret},
+		publicURL, pool, clk, account.NewService(pool, clk), a.sessions, slog.New(slog.DiscardHandler))
+	a.mux = http.NewServeMux()
+	handler.Register(a.mux, sameOrigin)
+	cookie := cookieNamed(t, a.login(t, "alice"), session.CookieName)
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, publicURL+auth.LogoutPath, nil)
+	req.Header.Add("Cookie", cookie.Name+"="+cookie.Value)
+	req.Header.Set("Sec-Fetch-Site", "cross-site")
+	rec := httptest.NewRecorder()
+	a.mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("cross-site logout = %d, want 403", rec.Code)
+	}
+	if _, err := a.sessions.Resolve(context.Background(), cookie.Value); err != nil {
+		t.Errorf("cross-site logout ended the session: %v", err)
+	}
+
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
+	rec = httptest.NewRecorder()
+	a.mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNoContent {
+		t.Errorf("same-origin logout = %d, want 204", rec.Code)
+	}
 }
