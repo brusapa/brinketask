@@ -791,16 +791,47 @@ components:
         detail: { type: string }
         code:
           type: string
-          description: Stable machine-readable error code, e.g. `validation_failed`, `not_found`, `conflict`, `cursor_expired`.
+          description: |
+            Stable machine-readable error code (SPEC D-28). New values are added as
+            phases need them; existing values never change meaning.
+            - `malformed_request` (400): the body is not valid JSON, is missing, or a
+              parameter cannot be parsed.
+            - `unauthenticated` (401): no valid session.
+            - `forbidden` (403): a cross-origin state-changing request.
+            - `not_found` (404): the resource does not exist or belongs to someone else.
+            - `payload_too_large` (413): the body exceeds 1 MiB (SPEC D-29).
+            - `unsupported_media_type` (415): the body has the wrong Content-Type.
+            - `validation_failed` (422): the request violates the schema or a rule;
+              `errors` lists the fields.
+            - `rate_limited` (429): too many requests for the session (SPEC D-29).
+            - `internal` (500): an unexpected server error.
+            - `not_implemented` (501): the operation arrives in a later phase.
+          enum:
+            - malformed_request
+            - unauthenticated
+            - forbidden
+            - not_found
+            - payload_too_large
+            - unsupported_media_type
+            - validation_failed
+            - rate_limited
+            - internal
+            - not_implemented
         errors:
           type: array
           description: Per-field validation errors.
-          items:
-            type: object
-            required: [field, message]
-            properties:
-              field: { type: string }
-              message: { type: string }
+          items: { $ref: '#/components/schemas/FieldError' }
+
+    FieldError:
+      type: object
+      required: [field, message]
+      properties:
+        field:
+          type: string
+          description: |
+            JSON Pointer (RFC 6901) to the offending member of the body, e.g.
+            `/timezone`, or the name of the offending parameter.
+        message: { type: string }
 
     SyncMeta:
       type: object

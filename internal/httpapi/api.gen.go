@@ -7,13 +7,19 @@ package httpapi
 
 import (
 	"bytes"
+	"compress/flate"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
+	"path"
+	"strings"
 	"time"
 
+	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/oapi-codegen/nullable"
 	"github.com/oapi-codegen/runtime"
 	openapi_types "github.com/oapi-codegen/runtime/types"
@@ -57,19 +63,61 @@ func (e CompletionEntryKind) Valid() bool {
 
 // Defines values for ListRole.
 const (
-	Editor ListRole = "editor"
-	Owner  ListRole = "owner"
-	Viewer ListRole = "viewer"
+	ListRoleEditor ListRole = "editor"
+	ListRoleOwner  ListRole = "owner"
+	ListRoleViewer ListRole = "viewer"
 )
 
 // Valid indicates whether the value is a known member of the ListRole enum.
 func (e ListRole) Valid() bool {
 	switch e {
-	case Editor:
+	case ListRoleEditor:
 		return true
-	case Owner:
+	case ListRoleOwner:
 		return true
-	case Viewer:
+	case ListRoleViewer:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProblemCode.
+const (
+	ProblemCodeForbidden            ProblemCode = "forbidden"
+	ProblemCodeInternal             ProblemCode = "internal"
+	ProblemCodeMalformedRequest     ProblemCode = "malformed_request"
+	ProblemCodeNotFound             ProblemCode = "not_found"
+	ProblemCodeNotImplemented       ProblemCode = "not_implemented"
+	ProblemCodePayloadTooLarge      ProblemCode = "payload_too_large"
+	ProblemCodeRateLimited          ProblemCode = "rate_limited"
+	ProblemCodeUnauthenticated      ProblemCode = "unauthenticated"
+	ProblemCodeUnsupportedMediaType ProblemCode = "unsupported_media_type"
+	ProblemCodeValidationFailed     ProblemCode = "validation_failed"
+)
+
+// Valid indicates whether the value is a known member of the ProblemCode enum.
+func (e ProblemCode) Valid() bool {
+	switch e {
+	case ProblemCodeForbidden:
+		return true
+	case ProblemCodeInternal:
+		return true
+	case ProblemCodeMalformedRequest:
+		return true
+	case ProblemCodeNotFound:
+		return true
+	case ProblemCodeNotImplemented:
+		return true
+	case ProblemCodePayloadTooLarge:
+		return true
+	case ProblemCodeRateLimited:
+		return true
+	case ProblemCodeUnauthenticated:
+		return true
+	case ProblemCodeUnsupportedMediaType:
+		return true
+	case ProblemCodeValidationFailed:
 		return true
 	default:
 		return false
@@ -78,13 +126,13 @@ func (e ListRole) Valid() bool {
 
 // Defines values for PushChannel.
 const (
-	Webpush PushChannel = "webpush"
+	PushChannelWebpush PushChannel = "webpush"
 )
 
 // Valid indicates whether the value is a known member of the PushChannel enum.
 func (e PushChannel) Valid() bool {
 	switch e {
-	case Webpush:
+	case PushChannelWebpush:
 		return true
 	default:
 		return false
@@ -306,6 +354,14 @@ type CompletionResult struct {
 	Task       Task                          `json:"task"`
 }
 
+// FieldError defines model for FieldError.
+type FieldError struct {
+	// Field JSON Pointer (RFC 6901) to the offending member of the body, e.g.
+	// `/timezone`, or the name of the offending parameter.
+	Field   string `json:"field"`
+	Message string `json:"message"`
+}
+
 // List defines model for List.
 type List struct {
 	Color     nullable.Nullable[Color]     `json:"color,omitempty"`
@@ -356,19 +412,45 @@ type Position = string
 
 // Problem defines model for Problem.
 type Problem struct {
-	// Code Stable machine-readable error code, e.g. `validation_failed`, `not_found`, `conflict`, `cursor_expired`.
-	Code   string  `json:"code"`
-	Detail *string `json:"detail,omitempty"`
+	// Code Stable machine-readable error code (SPEC D-28). New values are added as
+	// phases need them; existing values never change meaning.
+	// - `malformed_request` (400): the body is not valid JSON, is missing, or a
+	//   parameter cannot be parsed.
+	// - `unauthenticated` (401): no valid session.
+	// - `forbidden` (403): a cross-origin state-changing request.
+	// - `not_found` (404): the resource does not exist or belongs to someone else.
+	// - `payload_too_large` (413): the body exceeds 1 MiB (SPEC D-29).
+	// - `unsupported_media_type` (415): the body has the wrong Content-Type.
+	// - `validation_failed` (422): the request violates the schema or a rule;
+	//   `errors` lists the fields.
+	// - `rate_limited` (429): too many requests for the session (SPEC D-29).
+	// - `internal` (500): an unexpected server error.
+	// - `not_implemented` (501): the operation arrives in a later phase.
+	Code   ProblemCode `json:"code"`
+	Detail *string     `json:"detail,omitempty"`
 
 	// Errors Per-field validation errors.
-	Errors *[]struct {
-		Field   string `json:"field"`
-		Message string `json:"message"`
-	} `json:"errors,omitempty"`
-	Status int    `json:"status"`
-	Title  string `json:"title"`
-	Type   string `json:"type"`
+	Errors *[]FieldError `json:"errors,omitempty"`
+	Status int           `json:"status"`
+	Title  string        `json:"title"`
+	Type   string        `json:"type"`
 }
+
+// ProblemCode Stable machine-readable error code (SPEC D-28). New values are added as
+// phases need them; existing values never change meaning.
+//   - `malformed_request` (400): the body is not valid JSON, is missing, or a
+//     parameter cannot be parsed.
+//   - `unauthenticated` (401): no valid session.
+//   - `forbidden` (403): a cross-origin state-changing request.
+//   - `not_found` (404): the resource does not exist or belongs to someone else.
+//   - `payload_too_large` (413): the body exceeds 1 MiB (SPEC D-29).
+//   - `unsupported_media_type` (415): the body has the wrong Content-Type.
+//   - `validation_failed` (422): the request violates the schema or a rule;
+//     `errors` lists the fields.
+//   - `rate_limited` (429): too many requests for the session (SPEC D-29).
+//   - `internal` (500): an unexpected server error.
+//   - `not_implemented` (501): the operation arrives in a later phase.
+type ProblemCode string
 
 // PushChannel V1 supports only `webpush`. Future values, e.g. `fcm`, `unifiedpush`, `email`.
 type PushChannel string
@@ -4831,4 +4913,210 @@ func (sh *strictHandler) UncompleteTask(w http.ResponseWriter, r *http.Request, 
 	} else if response != nil {
 		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
 	}
+}
+
+// Base64 encoded, compressed with deflate, json marshaled OpenAPI spec.
+// Stored as a slice of fixed-width chunks rather than one concatenated
+// const string: with thousands of chunks the chained `+` fold is several
+// times slower for the Go compiler than parsing a slice literal.
+var swaggerSpec = []string{
+	"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",
+	"KINYlR9Lga09Oq59pzKzyncqIP786fP/DwA=",
+}
+
+// decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,
+// after base64-decoding and flate-decompressing the embedded blob.
+func decodeSpec() ([]byte, error) {
+	encoded := strings.Join(swaggerSpec, "")
+	compressed, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		return nil, fmt.Errorf("error base64 decoding spec: %w", err)
+	}
+	zr := flate.NewReader(bytes.NewReader(compressed))
+	var buf bytes.Buffer
+	if _, err := buf.ReadFrom(zr); err != nil {
+		return nil, fmt.Errorf("read flate: %w", err)
+	}
+	if err := zr.Close(); err != nil {
+		return nil, fmt.Errorf("close flate reader: %w", err)
+	}
+
+	return buf.Bytes(), nil
+}
+
+var rawSpec = decodeSpecCached()
+
+// a naive cache of the decoded OpenAPI spec
+func decodeSpecCached() func() ([]byte, error) {
+	data, err := decodeSpec()
+	return func() ([]byte, error) {
+		return data, err
+	}
+}
+
+// Constructs a synthetic filesystem for resolving external references when loading openapi specifications.
+func PathToRawSpec(pathToFile string) map[string]func() ([]byte, error) {
+	res := make(map[string]func() ([]byte, error))
+	if len(pathToFile) > 0 {
+		res[pathToFile] = rawSpec
+	}
+
+	return res
+}
+
+// GetSpec returns the OpenAPI specification corresponding to the generated
+// code in this file. External references in the spec are resolved through
+// PathToRawSpec; externally-referenced files must be embedded in their
+// corresponding Go packages (via the import-mapping feature). URL-based
+// external refs are not supported.
+func GetSpec() (swagger *openapi3.T, err error) {
+	resolvePath := PathToRawSpec("")
+
+	loader := openapi3.NewLoader()
+	loader.IsExternalRefsAllowed = true
+	loader.ReadFromURIFunc = func(loader *openapi3.Loader, url *url.URL) ([]byte, error) {
+		pathToFile := url.String()
+		pathToFile = path.Clean(pathToFile)
+		getSpec, ok := resolvePath[pathToFile]
+		if !ok {
+			err1 := fmt.Errorf("path not found: %s", pathToFile)
+			return nil, err1
+		}
+		return getSpec()
+	}
+	var specData []byte
+	specData, err = rawSpec()
+	if err != nil {
+		return
+	}
+	swagger, err = loader.LoadFromData(specData)
+	if err != nil {
+		return
+	}
+	return
+}
+
+// GetSpecJSON returns the raw JSON bytes of the embedded OpenAPI
+// specification: decompressed but not unmarshaled. External references
+// are not resolved here; the bytes are the spec exactly as embedded by
+// codegen. The result is cached at package init time, so repeated calls
+// are cheap.
+func GetSpecJSON() ([]byte, error) {
+	return rawSpec()
+}
+
+// GetSwagger returns the OpenAPI specification corresponding to the
+// generated code in this file.
+//
+// Deprecated: GetSwagger predates kin-openapi renaming openapi3.Swagger
+// to openapi3.T. Use [GetSpec] instead. This wrapper is retained for
+// backwards compatibility.
+func GetSwagger() (*openapi3.T, error) {
+	return GetSpec()
 }

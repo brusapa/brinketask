@@ -60,7 +60,9 @@ func run() error {
 	}
 
 	mux := http.NewServeMux()
-	httpapi.Register(mux, httpapi.Server{}, logger)
+	if err := httpapi.Register(mux, httpapi.Server{}, logger); err != nil {
+		return err
+	}
 	health.Register(mux, pool, logger)
 
 	server := &http.Server{
