@@ -40,10 +40,6 @@ func (Server) PatchReminder(context.Context, PatchReminderRequestObject) (PatchR
 	return PatchReminderdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
 }
 
-func (Server) GetChanges(context.Context, GetChangesRequestObject) (GetChangesResponseObject, error) {
-	return GetChangesdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
-}
-
 func (Server) CreateReminder(context.Context, CreateReminderRequestObject) (CreateReminderResponseObject, error) {
 	return CreateReminderdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
 }
