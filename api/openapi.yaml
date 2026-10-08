@@ -802,18 +802,25 @@ components:
             - `unauthenticated` (401): no valid session.
             - `forbidden` (403): a cross-origin state-changing request.
             - `not_found` (404): the resource does not exist or belongs to someone else.
+            - `conflict` (409): the request contradicts the resource's state, e.g. renaming the
+              inbox, a duplicate tag name, an id owned by someone else (SPEC D-23), or a
+              restore after the 30-day window.
+            - `cursor_expired` (410): the sync cursor is older than tombstone retention.
             - `payload_too_large` (413): the body exceeds 1 MiB (SPEC D-29).
             - `unsupported_media_type` (415): the body has the wrong Content-Type.
             - `validation_failed` (422): the request violates the schema or a rule;
               `errors` lists the fields.
             - `rate_limited` (429): too many requests for the session (SPEC D-29).
             - `internal` (500): an unexpected server error.
-            - `not_implemented` (501): the operation arrives in a later phase.
+            - `not_implemented` (501): the operation, or a field of the request, arrives in a
+              later phase (SPEC D-34).
           enum:
             - malformed_request
             - unauthenticated
             - forbidden
             - not_found
+            - conflict
+            - cursor_expired
             - payload_too_large
             - unsupported_media_type
             - validation_failed

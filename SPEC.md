@@ -79,6 +79,18 @@ Each decision has an identifier so it can be cited in commits and reviews.
 | D-31 | The web client keeps a full local replica built from `/sync/changes`; views and sidebar counts are computed on the client | Same model offline work will need; no count endpoints |
 | D-32 | Web Push: registering an endpoint that belongs to another user reassigns it to the caller; deleting a subscription is a hard delete (it is not syncable). `snooze` with a past `until` answers 422; a `snooze` reminder becomes a tombstone after it fires. The test notification is sent directly, without a delivery row | The browser belongs to whoever is signed in; fired snoozes do not pile up |
 | D-33 | `/sync/changes` does not carry completions, the profile or push subscriptions in V1 | Not needed online; revisit for offline work |
+| D-34 | Until their phase, a task request with a non-null `rrule` (phase 4) or non-empty `reminders` (phase 5) answers 501 `not_implemented`; `Task.reminders` is always empty | A recurring task stored before the engine exists would complete as if it were not recurring |
+| D-35 | A reference in a request body to a list that is unknown, deleted or someone else's (`list_id` of a task) answers 422 `validation_failed` on that field, like `tag_ids` (D-27). 404 is for the resource in the URL | The body is invalid; the addressed resource exists |
+| D-36 | `list_id` or `tag_id` filters naming something that is not the caller's, or that is deleted, answer 404 | Same as addressing it |
+| D-37 | `complete` on a `done` task is a no-op (`applied: false`); on a `dropped` task it answers 409 | A done task behaves like a stale occurrence; a dropped one must be reopened first |
+| D-38 | `PATCH status` allows `open` → `dropped`, `dropped` → `open` and the current value (no change); from `done` it answers 409 | Refines D-25: `done` only changes through the completion log |
+| D-39 | Undoing a completion keeps its record with `undone_at` set. Undone records do not count as the latest, do not appear in `/completions` or the history, and `complete` with an undone `completion_id` is a no-op (`applied: false`) | A late retry of `complete` must not complete the task again |
+| D-40 | `GET /tasks?deleted=true` (trash) lists tasks deleted on their own in the last 30 days; tasks deleted with their list come back with it and are not listed. With `deleted=true` the default `status=open` does not apply | `restore` of such a task would answer 409 anyway |
+| D-41 | A `PATCH` that changes nothing writes nothing: `version` and `seq` stay | Keeps `/sync/changes` free of empty changes |
+| D-42 | Search (`q`) matches a case- and accent-insensitive substring of title or description, using PostgreSQL's `unaccent` extension | Enough for 10,000 tasks per user; no trigram index |
+| D-43 | `sort=position` orders by the list's position, then the task's, then id; `sort=due` by `due_date` (no date last), all-day before timed, `due_time`, `position`, id | Lists do not interleave; deterministic order for paging |
+| D-44 | Duplicates in `tag_ids` are removed, keeping the first occurrence | Tags are a set; nothing to report |
+| D-45 | Deleting a task leaves its checklist items untouched; they come back with it. While the task is deleted, operations on its items answer 404 | Same as D-22 for the parent |
 
 ## 4. Data model
 
@@ -162,7 +174,7 @@ At most 5 live reminders per task (`snooze` reminders do not count).
 
 ### task_completions
 
-`id` (from the client), `task_id`, `kind` (`completed | skipped`), `occurrence_due_date`, `completed_at`, and the previous state needed to undo: `prev_due_date`, `prev_due_time`, `prev_recurrence_done_count`, `prev_status`.
+`id` (from the client), `task_id`, `kind` (`completed | skipped`), `occurrence_due_date`, `completed_at`, and the previous state needed to undo: `prev_due_date`, `prev_due_time`, `prev_recurrence_done_count`, `prev_status`, and `undone_at` (set when undone, D-39).
 
 ### push_subscriptions
 
@@ -330,7 +342,7 @@ The section is fed by completion records, not by tasks with `status = done`, so 
   - Optional, each read from the phase that uses it (D-29): `SESSION_IDLE_TIMEOUT` (default `168h`), `SESSION_MAX_AGE` (default `720h`), `SCHEDULER_INTERVAL` (default `15s`), `REMINDER_MAX_LATENESS` (default `12h`). Durations use Go syntax (`90m`, `12h`).
   - `PUBLIC_URL` is the origin the browser uses (`https://tasks.example.com`, no path). It must be `https`, except on a loopback host (`localhost`, `127.0.0.1`, `[::1]`), which browsers treat as secure. The OIDC redirect URL is `PUBLIC_URL` + `/auth/callback`.
   - Secrets accept a `_FILE` variant (path to a file whose content is the value; a trailing newline is ignored; setting both forms is an error): `DATABASE_URL`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `VAPID_PRIVATE_KEY`.
-- **Migrations** embedded in the binary, applied at startup, forward-only.
+- **Migrations** embedded in the binary, applied at startup, forward-only. The database user must be allowed to create the `unaccent` extension (it is a trusted extension: owning the database is enough).
 - **Observability**: structured JSON logs with no personal data or task content; `GET /healthz`; Prometheus metrics at `GET /metrics` (separate internal port).
 - **Security**: strict CSP headers, request size limits and per-session rate limit (values in D-29), version-pinned dependencies, non-root container with a read-only file system.
 - **Backups**: all state lives in PostgreSQL; document dump and restore.
