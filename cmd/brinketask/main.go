@@ -18,6 +18,8 @@ import (
 	// users.timezone and due_tz must resolve everywhere.
 	_ "time/tzdata"
 
+	"github.com/brusapa/brinketask/internal/account"
+	"github.com/brusapa/brinketask/internal/auth"
 	"github.com/brusapa/brinketask/internal/clock"
 	"github.com/brusapa/brinketask/internal/config"
 	"github.com/brusapa/brinketask/internal/health"
@@ -71,6 +73,8 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	auth.NewHandler(cfg.OIDC, cfg.PublicURL, pool, clk, account.NewService(pool, clk), sessions, logger).
+		Register(mux)
 	health.Register(mux, pool, logger)
 
 	server := &http.Server{

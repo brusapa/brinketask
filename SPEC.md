@@ -259,7 +259,12 @@ Any other part is rejected with 422. The start of the series (`DTSTART`) is the 
 
 - Flow: authorization code with PKCE (S256), `state` and `nonce`. Configuration through discovery (`/.well-known/openid-configuration`). Scopes: `openid profile email`.
 - Routes (outside `/api/v1`, they are browser redirects): `GET /auth/login`, `GET /auth/callback`, `POST /auth/logout`.
-- Automatic sign-up on first login: the user and their inbox are created.
+  - The provider's configuration is discovered on the first login, not at startup, so the server starts while the provider is down.
+  - `state`, `nonce` and the PKCE verifier are kept in `auth_requests` (section 4) for 10 minutes and are single use. A `brinketask_auth` cookie (HttpOnly, Secure, SameSite=Lax) binds them to the browser that started the login, which prevents login CSRF.
+  - The callback redirects to `/` on success and to `/?auth_error=<code>` on failure, with `code` one of `access_denied` (refused at the provider), `login_failed` (expired, replayed or forged callback, or a token that does not verify) and `provider_unavailable`. The server shows no text of its own; the web client translates the code.
+  - The client authenticates to the token endpoint with `client_secret_basic`.
+  - `POST /auth/logout` ends only the local session and answers 204, also without a session.
+- Automatic sign-up on first login: the user and their inbox are created. `display_name` is the `name` claim, or `preferred_username` when there is none; `email` is stored even if unverified, since it is informational only (D-14).
 - Who may log in is decided in Pocket ID (allowed groups of the OIDC client). The app has no registration and no passwords.
 - Session: random opaque identifier in a `HttpOnly; Secure; SameSite=Lax` cookie; only its hash is stored in the database. Sliding expiry of 7 days and absolute expiry of 30 (configurable).
   - *Accepted trade-off*: a user revoked in Pocket ID keeps access until their session expires. Mitigation: delete their rows in `sessions`.
