@@ -3,7 +3,11 @@ package httpapi
 import (
 	"time"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/oapi-codegen/nullable"
+	openapi_types "github.com/oapi-codegen/runtime/types"
+
+	"github.com/brusapa/brinketask/internal/localtime"
 
 	"github.com/brusapa/brinketask/internal/tasks"
 )
@@ -26,7 +30,7 @@ func listToAPI(l tasks.List) List {
 		Version:   &version,
 		CreatedAt: timePointer(l.CreatedAt),
 		UpdatedAt: timePointer(l.UpdatedAt),
-		DeletedAt: pointerToNullable(l.DeletedAt),
+		DeletedAt: utcNullable(l.DeletedAt),
 	}
 }
 
@@ -64,6 +68,111 @@ func tagToAPI(t tasks.Tag) Tag {
 		Version:   &version,
 		CreatedAt: timePointer(t.CreatedAt),
 		UpdatedAt: timePointer(t.UpdatedAt),
-		DeletedAt: pointerToNullable(t.DeletedAt),
+		DeletedAt: utcNullable(t.DeletedAt),
+	}
+}
+
+// taskToAPI converts a task. Tasks in /sync/changes come without their
+// checklist and reminders (withChildren false); everywhere else they carry
+// both, and reminders are always empty until phase 5 (D-34).
+func taskToAPI(t tasks.Task, withChildren bool) Task {
+	version := int(t.Version)
+	doneCount := int(t.RecurrenceDoneCount)
+	task := Task{
+		Id:                  t.ID,
+		ListId:              t.ListID,
+		Title:               t.Title,
+		Description:         t.Description,
+		Status:              TaskStatus(t.Status),
+		Priority:            int(t.Priority),
+		Position:            t.Position,
+		DueDate:             dateToAPI(t.DueDate),
+		DueTime:             timeOfDayToAPI(t.DueTime),
+		DueTz:               pointerToNullable(t.DueTz),
+		Rrule:               pointerToNullable(t.Rrule),
+		RepeatFrom:          RepeatFrom(t.RepeatFrom),
+		RecurrenceDoneCount: &doneCount,
+		CompletedAt:         utcNullable(t.CompletedAt),
+		TagIds:              t.TagIds,
+		Version:             &version,
+		CreatedAt:           timePointer(t.CreatedAt),
+		UpdatedAt:           timePointer(t.UpdatedAt),
+		DeletedAt:           utcNullable(t.DeletedAt),
+	}
+	if task.TagIds == nil {
+		task.TagIds = []openapi_types.UUID{}
+	}
+	if withChildren {
+		items := make([]ChecklistItem, len(t.ChecklistItems))
+		for i, item := range t.ChecklistItems {
+			items[i] = checklistItemToAPI(item)
+		}
+		reminders := []Reminder{}
+		task.ChecklistItems = &items
+		task.Reminders = &reminders
+	}
+	return task
+}
+
+func checklistItemToAPI(c tasks.ChecklistItem) ChecklistItem {
+	version := int(c.Version)
+	taskID := c.TaskID
+	return ChecklistItem{
+		Id:        c.ID,
+		TaskId:    &taskID,
+		Title:     c.Title,
+		IsDone:    c.IsDone,
+		Position:  c.Position,
+		Version:   &version,
+		CreatedAt: timePointer(c.CreatedAt),
+		UpdatedAt: timePointer(c.UpdatedAt),
+		DeletedAt: utcNullable(c.DeletedAt),
+	}
+}
+
+// dateToAPI converts a calendar date stored as UTC midnight.
+func dateToAPI(t *time.Time) nullable.Nullable[openapi_types.Date] {
+	if t == nil {
+		return nullable.NewNullNullable[openapi_types.Date]()
+	}
+	return nullable.NewNullableWithValue(openapi_types.Date{Time: *t})
+}
+
+// timeOfDayToAPI converts PostgreSQL's time to "HH:MM", or null.
+func timeOfDayToAPI(t pgtype.Time) nullable.Nullable[LocalTime] {
+	if !t.Valid {
+		return nullable.NewNullNullable[LocalTime]()
+	}
+	return nullable.NewNullableWithValue(localtime.Format(t))
+}
+
+// utcNullable converts an optional timestamp, in UTC.
+func utcNullable(t *time.Time) nullable.Nullable[time.Time] {
+	if t == nil {
+		return nullable.NewNullNullable[time.Time]()
+	}
+	return nullable.NewNullableWithValue(t.UTC())
+}
+
+// dateFromAPI is the inverse of dateToAPI for request fields.
+func dateFromAPI(d *openapi_types.Date) *time.Time {
+	if d == nil {
+		return nil
+	}
+	t := time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, time.UTC)
+	return &t
+}
+
+// nullableDateFromAPI converts a merge-patch date, keeping "absent" and
+// "null" apart.
+func nullableDateFromAPI(n nullable.Nullable[openapi_types.Date]) nullable.Nullable[time.Time] {
+	switch {
+	case !n.IsSpecified():
+		return nullable.Nullable[time.Time]{}
+	case n.IsNull():
+		return nullable.NewNullNullable[time.Time]()
+	default:
+		d := n.MustGet()
+		return nullable.NewNullableWithValue(*dateFromAPI(&d))
 	}
 }

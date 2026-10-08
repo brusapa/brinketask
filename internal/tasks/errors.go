@@ -55,3 +55,13 @@ type NotImplementedError struct {
 func (e *NotImplementedError) Error() string {
 	return "tasks: not implemented yet: " + e.Feature
 }
+
+// invalid returns a *ValidationError for fields, or nil when there are none.
+// It returns the error interface so callers can write
+// `if err := invalid(fields); err != nil`.
+func invalid(fields []FieldError) error {
+	if len(fields) == 0 {
+		return nil
+	}
+	return &ValidationError{Fields: fields}
+}
