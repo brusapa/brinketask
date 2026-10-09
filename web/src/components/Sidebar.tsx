@@ -226,13 +226,14 @@ function Lists({ counts: listCounts }: { counts: ReadonlyMap<string, number> }) 
     renderDropIndicator: (target) => <DropIndicator target={target} className="drop-indicator" />,
   });
 
+  // An empty grid would still show an empty row to screen readers.
+  if (lists.length === 0) return null;
   return (
     <GridList
       className="nav-list"
       aria-labelledby="sidebar-lists"
       items={lists}
       dragAndDropHooks={dragAndDropHooks}
-      renderEmptyState={() => null}
     >
       {(list) => {
         const path = `/lists/${list.id}`;

@@ -40,6 +40,9 @@ export async function renderApp(
     state?: Partial<ChangesPage>;
     server?: FakeServer;
     search?: string;
+    browserZone?: string;
+    /** Adds routes before the app starts. */
+    setup?: (server: FakeServer) => void;
   } = {},
 ): Promise<Rendered> {
   const server = options.server ?? new FakeServer();
@@ -52,6 +55,7 @@ export async function renderApp(
     );
     server.on("GET", "/completions", json({ items: [], next_cursor: null }));
   }
+  options.setup?.(server);
   const clock = new FixedClock(testNow);
   const left: string[] = [];
   const user = userEvent.setup();
@@ -61,6 +65,7 @@ export async function renderApp(
         origin,
         search: options.search ?? "",
         clock,
+        browserZone: options.browserZone ?? "Europe/Madrid",
         fetch: (request) => server.handleRequest(request),
         leave: (path) => left.push(path),
       }}

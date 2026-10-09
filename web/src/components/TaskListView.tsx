@@ -182,27 +182,29 @@ function TaskSection({
           <span className="section-count">{tasks.length}</span>
         </h2>
       )}
-      <GridList
-        className="task-list"
-        aria-label={heading ?? t("views.tasks")}
-        items={tasks}
-        selectionMode="single"
-        selectionBehavior="replace"
-        selectedKeys={selected !== null ? [selected] : []}
-        onSelectionChange={onSelectionChange}
-        dragAndDropHooks={dragAndDropHooks}
-        renderEmptyState={() => null}
-      >
-        {(task) => (
-          <TaskRow
-            task={task}
-            today={today}
-            now={now}
-            showList={showList}
-            progress={progress.get(task.id)}
-          />
-        )}
-      </GridList>
+      {/* An empty grid would still show an empty row to screen readers. */}
+      {tasks.length > 0 && (
+        <GridList
+          className="task-list"
+          aria-label={heading ?? t("views.tasks")}
+          items={tasks}
+          selectionMode="single"
+          selectionBehavior="replace"
+          selectedKeys={selected !== null ? [selected] : []}
+          onSelectionChange={onSelectionChange}
+          dragAndDropHooks={dragAndDropHooks}
+        >
+          {(task) => (
+            <TaskRow
+              task={task}
+              today={today}
+              now={now}
+              showList={showList}
+              progress={progress.get(task.id)}
+            />
+          )}
+        </GridList>
+      )}
     </div>
   );
 }

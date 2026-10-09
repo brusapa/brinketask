@@ -152,5 +152,26 @@
     "low": "Low",
     "medium": "Medium",
     "high": "High"
+  },
+  "trash": {
+    "note": "Deleted lists and tasks can be restored for 30 days.",
+    "empty": "The trash is empty.",
+    "loadFailed": "The trash could not be loaded.",
+    "restore": "Restore",
+    "restoreItem": "Restore “{{name}}”",
+    "deletedOn": "Deleted {{date}}"
+  },
+  "settings": {
+    "account": "Account",
+    "zone": "Time zone",
+    "zoneHelp": "Today, overdue tasks and the Completed section follow this zone.",
+    "zoneSaved": "Time zone set to {{zone}}",
+    "logout": "Sign out"
+  },
+  "zone": {
+    "label": "Time zone",
+    "message": "This device is set to {{device}}, but your profile uses {{profile}}.",
+    "use": "Use {{zone}}",
+    "keep": "Keep {{zone}}"
   }
 }

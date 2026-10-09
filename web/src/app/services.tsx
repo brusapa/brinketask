@@ -23,6 +23,10 @@ export interface Services {
   queryClient: QueryClient;
   /** The signed-in user's profile; replaced when it changes. */
   profile: ProfileStore;
+  /** The browser's own time zone, to compare with the profile's (D-47). */
+  browserZone: string;
+  /** Ends the session (POST /auth/logout) and shows the signed-out page. */
+  logout: () => Promise<void>;
 }
 
 /** The profile, kept outside React so Actions can read the zone. */
@@ -54,6 +58,8 @@ export function createServices(options: {
   api: Api;
   clock: Clock;
   user: User;
+  browserZone: string;
+  logout: () => Promise<void>;
   onError: (error: unknown, toasts: ToastStore) => void;
 }): Services {
   const replica = new Replica();
@@ -89,6 +95,8 @@ export function createServices(options: {
     toasts,
     queryClient,
     profile,
+    browserZone: options.browserZone,
+    logout: options.logout,
   };
 }
 

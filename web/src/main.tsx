@@ -26,6 +26,7 @@ createRoot(root).render(
         origin: window.location.origin,
         search: window.location.search,
         clock: systemClock,
+        browserZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         leave: (path) => {
           window.location.assign(path);
         },

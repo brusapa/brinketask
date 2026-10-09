@@ -18,8 +18,10 @@ export interface Environment {
   /** The query string the page was opened with. */
   search: string;
   clock: Clock;
-  /** Leaves the app for a server route (login). */
+  /** Leaves the app for a server route (login) or a full reload. */
   leave: (path: string) => void;
+  /** The browser's IANA time zone. */
+  browserZone: string;
   fetch?: (request: Request) => Promise<Response>;
 }
 
@@ -57,6 +59,16 @@ export function Root({ env, children }: { env: Environment; children: ReactNode 
           api,
           clock: env.clock,
           user,
+          browserZone: env.browserZone,
+          logout: async () => {
+            // An operational route, outside the API contract (SPEC
+            // section 7); it answers 204, with or without a session.
+            const fetcher = env.fetch ?? ((request: Request) => globalThis.fetch(request));
+            await fetcher(new Request(`${env.origin}/auth/logout`, { method: "POST" })).catch(
+              () => undefined,
+            );
+            env.leave("/?signed_out=1");
+          },
           onError: (error, toasts) => {
             // Rendered lazily: the translation is looked up at show time.
             toasts.show({ message: errorMessage(error, i18nT), tone: "error" });

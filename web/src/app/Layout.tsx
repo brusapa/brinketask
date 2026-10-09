@@ -8,6 +8,7 @@ import { Outlet, useHref, useLocation, useNavigate, useSearchParams } from "reac
 
 import { Sidebar } from "../components/Sidebar";
 import { Toasts } from "../components/Toasts";
+import { ZoneBanner } from "../components/ZoneBanner";
 import { LayoutContext } from "./layoutContext";
 
 export function Layout({ detail }: { detail: (taskId: string, close: () => void) => ReactNode }) {
@@ -50,6 +51,7 @@ export function Layout({ detail }: { detail: (taskId: string, close: () => void)
             onClick={() => setDrawerOpen(false)}
           />
           <main className="main">
+            <ZoneBanner />
             <Outlet />
           </main>
           {taskId !== null && detail(taskId, closeDetail)}

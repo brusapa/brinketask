@@ -228,9 +228,14 @@ test("the sidebar shows counts and creates lists", async () => {
 
 test("a list in the sidebar opens its screen", async () => {
   const { user } = await renderApp({
-    state: { lists: [work], tasks: [task({ id: "w", list_id: workId, title: "Quarterly report" })] },
+    state: {
+      lists: [work],
+      tasks: [task({ id: "w", list_id: workId, title: "Quarterly report" })],
+    },
   });
-  await user.click(within(await screen.findByRole("navigation")).getByRole("row", { name: /Work/ }));
+  await user.click(
+    within(await screen.findByRole("navigation")).getByRole("row", { name: /Work/ }),
+  );
   expect(await screen.findByRole("heading", { level: 1, name: "Work" })).toBeDefined();
   expect(screen.getByRole("row", { name: /Quarterly report/ })).toBeDefined();
 });

@@ -6,7 +6,9 @@ import { useTranslation } from "react-i18next";
 import { Layout } from "./app/Layout";
 import { useNow, useProfile, useSnapshot } from "./app/services";
 import { TaskDetail } from "./components/detail/TaskDetail";
+import { SettingsView } from "./components/SettingsView";
 import { TaskListView } from "./components/TaskListView";
+import { TrashView } from "./components/TrashView";
 import { dateIn } from "./lib/dates";
 import { formatLongDay } from "./lib/format";
 
@@ -32,6 +34,8 @@ export function AppRoutes() {
         <Route path="lists/:listId" element={<ListScreen />} />
         <Route path="tags/:tagId" element={<TagScreen />} />
         <Route path="search" element={<SearchScreen />} />
+        <Route path="trash" element={<TrashView />} />
+        <Route path="settings" element={<SettingsView />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
