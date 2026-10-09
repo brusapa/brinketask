@@ -84,7 +84,20 @@ Sizes are font-size / line-height in px.
 
 Theme follows `prefers-color-scheme`; light when the system states no preference. Implement the tokens as CSS custom properties so both themes share one set of component styles.
 
-List colour dots use a small fixed palette chosen by the user; the mockups use the accent, priority-medium and priority-low values.
+List colour dots use a small fixed palette chosen by the user. One value serves both themes, so each colour keeps at least 3:1 against the surface and background of both (*proposed*):
+
+| Name | Value |
+|---|---|
+| Teal | `#0D9488` |
+| Green | `#16A34A` |
+| Blue | `#2563EB` |
+| Violet | `#8B5CF6` |
+| Pink | `#DB2777` |
+| Red | `#DC2626` |
+| Orange | `#EA580C` |
+| Slate | `#64748B` |
+
+A list with no colour shows a dot in the muted text colour.
 
 ## 5. Components and metrics
 
@@ -133,6 +146,9 @@ On touch devices items 3 and 6–8 collapse into the meta line under the title, 
 ### Sections in a view
 
 - Today: "Overdue" (heading in the danger colour), "Today", then "Completed".
+- Next 7 days: "Overdue", then one section per day from today to today + 6, titled "Today", "Tomorrow", then the weekday and date; then "Completed" (SPEC D-48).
+- A tag, search: open tasks in list order, then task order; a tag view ends with "Completed", search does not (SPEC D-54).
+- Trash: deleted lists, then deleted tasks, each with a restore action.
 - A list: its open tasks in manual order with no heading, then "Completed".
 - "Completed" is collapsed by default and shows its count. Expanded entries use the completed text colour with a line-through, a filled checkbox and the completion time on the right.
 
