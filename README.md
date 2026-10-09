@@ -1,5 +1,7 @@
 # brinketask
 
+This project is enterely vibe-coded, and not recommended for production
+
 Self-hosted tasks and reminders for a household or a small group. One
 container and a PostgreSQL database; users sign in with their OpenID
 Connect provider (Pocket ID), and reminders arrive as notifications on
