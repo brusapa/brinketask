@@ -33,6 +33,9 @@ export default defineConfig(
   },
   {
     rules: {
+      // `const { a, ...rest } = x` is how JavaScript copies an object
+      // without some fields; the dropped fields are unused by design.
+      "@typescript-eslint/no-unused-vars": ["error", { ignoreRestSiblings: true }],
       // Template literals with numbers are common for CSS values and ids.
       "@typescript-eslint/restrict-template-expressions": ["error", { allowNumber: true }],
     },
