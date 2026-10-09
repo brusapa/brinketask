@@ -57,8 +57,10 @@ go-test:
 web-test: $(WEB_DEPS)
 	cd web && npm test
 
-build:
-	CGO_ENABLED=0 go build -trimpath -o bin/brinketask ./cmd/brinketask
+# The binary embeds the web client (build tag webui, see web/embed.go), so
+# the client is built first.
+build: web-build
+	CGO_ENABLED=0 go build -trimpath -tags webui -o bin/brinketask ./cmd/brinketask
 
 web-build: $(WEB_DEPS)
 	cd web && npm run build

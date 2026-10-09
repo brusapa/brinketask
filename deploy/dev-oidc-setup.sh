@@ -5,7 +5,8 @@
 #   - a user "dev" (dev@example.com);
 #   - a confidential OIDC client "brinketask-dev" with PKCE and the
 #     callbacks of the app in compose (port 8080) and of a server run on
-#     the host (port 8081; see CLAUDE.md);
+#     the host (port 8081) and of the Vite dev server (port 5173; see
+#     CLAUDE.md);
 #   - deploy/dev.env with OIDC_CLIENT_ID and OIDC_CLIENT_SECRET for the app.
 #
 # Safe to run again: existing user, client and dev.env are kept; a new
@@ -54,13 +55,20 @@ if [ "$(status "/users/$user_id")" = "404" ]; then
     \"isAdmin\":false}" >/dev/null
 fi
 
+# The callbacks: the app in compose (8080), a server on the host (8081)
+# and the Vite dev server in front of it (5173).
+client_settings="\"name\":\"brinketask (dev)\",
+  \"callbackURLs\":[\"http://localhost:8080/auth/callback\",\"http://localhost:8081/auth/callback\",\"http://localhost:5173/auth/callback\"],
+  \"isPublic\":false,\"pkceEnabled\":true,\"skipConsent\":true"
+
 new_client=false
 if [ "$(status "/oidc/clients/$client_id")" = "404" ]; then
   echo "creating OIDC client $client_id"
-  api POST /oidc/clients "{\"id\":\"$client_id\",\"name\":\"brinketask (dev)\",
-    \"callbackURLs\":[\"http://localhost:8080/auth/callback\",\"http://localhost:8081/auth/callback\"],
-    \"isPublic\":false,\"pkceEnabled\":true,\"skipConsent\":true}" >/dev/null
+  api POST /oidc/clients "{\"id\":\"$client_id\",$client_settings}" >/dev/null
   new_client=true
+else
+  # Keeps an existing client in step with the settings above.
+  api PUT "/oidc/clients/$client_id" "{$client_settings}" >/dev/null
 fi
 
 if [ "$new_client" = true ] || [ ! -s "$env_file" ]; then
