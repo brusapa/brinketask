@@ -11,10 +11,11 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/brusapa/brinketask/internal/webpush"
 )
 
-// Config holds every setting the process needs. Settings used by later phases
-// (VAPID, scheduler, ...) are added when the code that needs them arrives.
+// Config holds every setting the process needs (SPEC section 10).
 type Config struct {
 	DatabaseURL string
 	ListenAddr  string
@@ -31,6 +32,21 @@ type Config struct {
 	// SessionMaxAge in any case (SPEC section 7, D-29).
 	SessionIdleTimeout time.Duration
 	SessionMaxAge      time.Duration
+
+	Push Push
+
+	// The reminder scheduler polls every SchedulerInterval; a reminder
+	// handed over more than ReminderMaxLateness late is skipped (SPEC
+	// section 6, D-29).
+	SchedulerInterval   time.Duration
+	ReminderMaxLateness time.Duration
+}
+
+// Push identifies the server to Web Push services (VAPID, RFC 8292).
+type Push struct {
+	Keys webpush.Keys
+	// Subject is the contact the push services see: mailto: or https:.
+	Subject string
 }
 
 // OIDC identifies the server as a confidential client of the OIDC provider
@@ -51,16 +67,20 @@ const (
 	defaultListenAddr         = ":8080"
 	defaultSessionIdleTimeout = 7 * 24 * time.Hour
 	defaultSessionMaxAge      = 30 * 24 * time.Hour
+	defaultSchedulerInterval  = 15 * time.Second
+	defaultMaxLateness        = 12 * time.Hour
 )
 
 // Load builds a Config from the variables returned by lookup. It reports the
 // first problem it finds.
 func Load(lookup LookupFunc) (Config, error) {
 	cfg := Config{
-		ListenAddr:         defaultListenAddr,
-		LogLevel:           slog.LevelInfo,
-		SessionIdleTimeout: defaultSessionIdleTimeout,
-		SessionMaxAge:      defaultSessionMaxAge,
+		ListenAddr:          defaultListenAddr,
+		LogLevel:            slog.LevelInfo,
+		SessionIdleTimeout:  defaultSessionIdleTimeout,
+		SessionMaxAge:       defaultSessionMaxAge,
+		SchedulerInterval:   defaultSchedulerInterval,
+		ReminderMaxLateness: defaultMaxLateness,
 	}
 	var err error
 
@@ -102,7 +122,40 @@ func Load(lookup LookupFunc) (Config, error) {
 		return Config{}, err
 	}
 
+	if cfg.Push, err = loadPush(lookup); err != nil {
+		return Config{}, err
+	}
+	if err := duration(lookup, "SCHEDULER_INTERVAL", &cfg.SchedulerInterval); err != nil {
+		return Config{}, err
+	}
+	if err := duration(lookup, "REMINDER_MAX_LATENESS", &cfg.ReminderMaxLateness); err != nil {
+		return Config{}, err
+	}
+
 	return cfg, nil
+}
+
+// loadPush reads the VAPID key pair, as `brinketask vapid-keys` prints it
+// (D-68), and the contact subject.
+func loadPush(lookup LookupFunc) (Push, error) {
+	public, _ := lookup("VAPID_PUBLIC_KEY")
+	if public == "" {
+		return Push{}, errors.New("config: VAPID_PUBLIC_KEY is required")
+	}
+	private, err := requiredSecret(lookup, "VAPID_PRIVATE_KEY")
+	if err != nil {
+		return Push{}, err
+	}
+	keys, err := webpush.ParseKeys(public, private)
+	if err != nil {
+		// ParseKeys errors never quote the private key.
+		return Push{}, fmt.Errorf("config: VAPID keys: %w", err)
+	}
+	subject, _ := lookup("VAPID_SUBJECT")
+	if !strings.HasPrefix(subject, "mailto:") && !strings.HasPrefix(subject, "https://") {
+		return Push{}, errors.New("config: VAPID_SUBJECT must be a mailto: or https: URL")
+	}
+	return Push{Keys: keys, Subject: subject}, nil
 }
 
 // parsePublicURL accepts an origin: scheme and host, optionally a port, and

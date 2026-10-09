@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -27,6 +28,7 @@ import (
 	"github.com/brusapa/brinketask/internal/session"
 	"github.com/brusapa/brinketask/internal/storage"
 	"github.com/brusapa/brinketask/internal/tasks"
+	"github.com/brusapa/brinketask/internal/webpush"
 	"github.com/brusapa/brinketask/internal/webui"
 	"github.com/brusapa/brinketask/web"
 )
@@ -35,11 +37,35 @@ import (
 const shutdownTimeout = 10 * time.Second
 
 func main() {
+	// `brinketask vapid-keys` prints a new VAPID key pair and exits (D-68);
+	// without arguments the binary is the server.
+	if len(os.Args) > 1 {
+		if err := command(os.Args[1:]); err != nil {
+			fmt.Fprintln(os.Stderr, "brinketask:", err)
+			os.Exit(2)
+		}
+		return
+	}
 	if err := run(); err != nil {
 		// The logger may not exist yet (configuration errors), so write directly.
 		fmt.Fprintln(os.Stderr, "brinketask:", err)
 		os.Exit(1)
 	}
+}
+
+// command runs a subcommand.
+func command(args []string) error {
+	if len(args) != 1 || args[0] != "vapid-keys" {
+		return fmt.Errorf("unknown command %q; the only one is vapid-keys", strings.Join(args, " "))
+	}
+	public, private, err := webpush.GenerateKeys()
+	if err != nil {
+		return err
+	}
+	// Printed as environment lines, ready for an env file. The private key
+	// goes only to standard output, never to a log.
+	fmt.Printf("VAPID_PUBLIC_KEY=%s\nVAPID_PRIVATE_KEY=%s\n", public, private)
+	return nil
 }
 
 func run() error {

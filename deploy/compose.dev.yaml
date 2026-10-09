@@ -64,12 +64,13 @@ services:
     # Pocket ID's network namespace makes http://localhost:1411 reach Pocket
     # ID from inside the app too, as it does from the browser.
     network_mode: service:pocket-id
-    env_file: dev.env # OIDC_CLIENT_ID and OIDC_CLIENT_SECRET
+    env_file: dev.env # OIDC client and VAPID keys, from dev-oidc-setup.sh
     environment:
       DATABASE_URL: postgres://brinketask:brinketask@db:5432/brinketask?sslmode=disable
       LOG_LEVEL: debug
       PUBLIC_URL: http://localhost:8080
       OIDC_ISSUER: http://localhost:1411
+      VAPID_SUBJECT: mailto:dev@example.com
     # Same restrictions as production (SPEC section 10).
     read_only: true
     cap_drop: [ALL]
