@@ -93,3 +93,24 @@ function below(s: string): string {
   // One character lower, then the middle, so there is room on both sides.
   return String.fromCharCode(Math.max(code - 1, 1)) + middle;
 }
+
+/**
+ * The new position of an item dropped before or after another one in an
+ * ordered list, or null when the target is not in the list. `items` is
+ * the list in display order, the moved item included.
+ */
+export function positionForMove(
+  items: readonly { id: string; position: string }[],
+  movedId: string,
+  targetId: string,
+  where: "before" | "after" | "on",
+): string | null {
+  const others = items.filter((item) => item.id !== movedId);
+  const target = others.findIndex((item) => item.id === targetId);
+  if (target < 0) return null;
+  const insertAt = where === "before" ? target : target + 1;
+  return positionBetween(
+    others[insertAt - 1]?.position ?? null,
+    others[insertAt]?.position ?? null,
+  );
+}

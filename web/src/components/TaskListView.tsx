@@ -21,7 +21,7 @@ import type { Snapshot, TaskRow as Row } from "../data/replica";
 import { completedScope, sections, type Section, type View } from "../data/views";
 import { dateIn } from "../lib/dates";
 import { formatDay } from "../lib/format";
-import { positionBetween } from "../lib/positions";
+import { positionForMove } from "../lib/positions";
 import { CompletedSection } from "./CompletedSection";
 import { taskDragType } from "./drag";
 import { TaskRow } from "./TaskRow";
@@ -149,13 +149,13 @@ function TaskSection({
     onReorder: reorderable
       ? (event) => {
           const moved = String([...event.keys][0]);
-          const others = tasks.filter((task) => task.id !== moved);
-          const target = others.findIndex((task) => task.id === event.target.key);
-          if (target < 0) return;
-          const insertAt = event.target.dropPosition === "before" ? target : target + 1;
-          const before = others[insertAt - 1]?.position ?? null;
-          const after = others[insertAt]?.position ?? null;
-          void actions.updateTask(moved, { position: positionBetween(before, after) });
+          const position = positionForMove(
+            tasks,
+            moved,
+            String(event.target.key),
+            event.target.dropPosition,
+          );
+          if (position !== null) void actions.updateTask(moved, { position });
         }
       : undefined,
     renderDropIndicator: (target) => <DropIndicator target={target} className="drop-indicator" />,

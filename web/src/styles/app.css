@@ -1243,3 +1243,45 @@ textarea.input {
     height: 44px;
   }
 }
+
+/* Lists in the sidebar are grid rows (for drag and drop) that act as links. */
+.nav-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  outline: none;
+}
+
+.nav-row[data-hovered] {
+  background: var(--color-bg);
+}
+
+.nav-row[data-focus-visible] {
+  outline: 2px solid var(--color-accent);
+}
+
+.nav-row-current {
+  background: var(--color-selected);
+  color: var(--color-accent-text);
+  font-weight: 500;
+}
+
+.nav-row[data-drop-target] {
+  outline: 2px solid var(--color-accent);
+}
+
+.nav-row:hover .nav-menu,
+.nav-row[data-focus-visible] .nav-menu {
+  opacity: 1;
+}
+
+@media (pointer: coarse) {
+  .nav-row {
+    height: 44px;
+  }
+}

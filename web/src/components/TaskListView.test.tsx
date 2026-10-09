@@ -205,7 +205,8 @@ test("the sidebar shows counts and creates lists", async () => {
     },
   });
   const nav = await screen.findByRole("navigation");
-  expect(within(nav).getByRole("link", { name: /Work/ }).textContent).toContain("2");
+  // Lists are grid rows (draggable), the fixed views plain links.
+  expect(within(nav).getByRole("row", { name: /Work/ }).textContent).toContain("2");
   expect(within(nav).getByRole("link", { name: /Today/ }).textContent).toContain("1");
 
   server.on("POST", "/lists", (r) =>
@@ -222,5 +223,14 @@ test("the sidebar shows counts and creates lists", async () => {
       color: "#16A34A",
     });
   });
-  expect(await within(nav).findByRole("link", { name: /Home/ })).toBeDefined();
+  expect(await within(nav).findByRole("row", { name: /Home/ })).toBeDefined();
+});
+
+test("a list in the sidebar opens its screen", async () => {
+  const { user } = await renderApp({
+    state: { lists: [work], tasks: [task({ id: "w", list_id: workId, title: "Quarterly report" })] },
+  });
+  await user.click(within(await screen.findByRole("navigation")).getByRole("row", { name: /Work/ }));
+  expect(await screen.findByRole("heading", { level: 1, name: "Work" })).toBeDefined();
+  expect(screen.getByRole("row", { name: /Quarterly report/ })).toBeDefined();
 });

@@ -2,7 +2,13 @@ import { describe, expect, test } from "vitest";
 
 import { FixedClock } from "./clock";
 import { uuidv7 } from "./ids";
-import { comparePositions, positionAtEnd, positionAtStart, positionBetween } from "./positions";
+import {
+  comparePositions,
+  positionAtEnd,
+  positionAtStart,
+  positionBetween,
+  positionForMove,
+} from "./positions";
 import { fold, matcher } from "./search";
 
 describe("uuidv7", () => {
@@ -92,4 +98,33 @@ describe("search", () => {
 
 test("equal neighbours still give a position after the first", () => {
   expect(positionBetween("a1", "a1") > "a1").toBe(true);
+});
+
+describe("positionForMove", () => {
+  const items = [
+    { id: "a", position: "a0" },
+    { id: "b", position: "a1" },
+    { id: "c", position: "a2" },
+  ];
+  const order = (moved: string, position: string) =>
+    items
+      .map((i) => (i.id === moved ? { ...i, position } : i))
+      .sort(comparePositions)
+      .map((i) => i.id)
+      .join("");
+
+  test.each([
+    ["c", "a", "before", "cab"],
+    ["a", "c", "after", "bca"],
+    ["a", "b", "after", "bac"],
+    ["c", "b", "before", "acb"],
+  ] as const)("move %s %s… gives %s", (moved, target, where, expected) => {
+    const position = positionForMove(items, moved, target, where === "before" ? "before" : "after");
+    expect(position).not.toBeNull();
+    expect(order(moved, position ?? "")).toBe(expected);
+  });
+
+  test("an unknown target gives null", () => {
+    expect(positionForMove(items, "a", "zz", "before")).toBeNull();
+  });
 });

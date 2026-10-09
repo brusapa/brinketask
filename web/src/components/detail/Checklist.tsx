@@ -16,7 +16,7 @@ import { useTranslation } from "react-i18next";
 
 import type { ChecklistItem } from "../../api/types";
 import { useServices, useSnapshot } from "../../app/services";
-import { comparePositions, positionBetween } from "../../lib/positions";
+import { comparePositions, positionForMove } from "../../lib/positions";
 import { TaskCheckbox } from "../TaskCheckbox";
 
 export function Checklist({ taskId }: { taskId: string }) {
@@ -32,16 +32,13 @@ export function Checklist({ taskId }: { taskId: string }) {
       [...keys].map((key) => ({ "text/plain": items.find((i) => i.id === key)?.title ?? "" })),
     onReorder: (event) => {
       const moved = String([...event.keys][0]);
-      const others = items.filter((i) => i.id !== moved);
-      const target = others.findIndex((i) => i.id === event.target.key);
-      if (target < 0) return;
-      const insertAt = event.target.dropPosition === "before" ? target : target + 1;
-      void actions.updateItem(moved, {
-        position: positionBetween(
-          others[insertAt - 1]?.position ?? null,
-          others[insertAt]?.position ?? null,
-        ),
-      });
+      const position = positionForMove(
+        items,
+        moved,
+        String(event.target.key),
+        event.target.dropPosition,
+      );
+      if (position !== null) void actions.updateItem(moved, { position });
     },
     renderDropIndicator: (target) => <DropIndicator target={target} className="drop-indicator" />,
   });
