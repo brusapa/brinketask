@@ -2,6 +2,7 @@
 // browser's push service and the browser together do: it checks the VAPID
 // signature (RFC 8292) and decrypts the payload with the subscription's
 // private keys (RFC 8291), so tests see exactly what a device would show.
+// Go tests use New; the end-to-end test runs it as cmd/fakepush (D-73).
 package webpushtest
 
 import (
@@ -59,32 +60,49 @@ type device struct {
 // VAPID public key vapidPublic. It stops when the test ends.
 func New(t *testing.T, vapidPublic string) *Service {
 	t.Helper()
-	s := &Service{vapidKey: vapidPublic, devices: map[string]*device{}, statuses: map[string][]int{}}
-	s.server = httptest.NewServer(http.HandlerFunc(s.handle))
+	s := NewService(vapidPublic)
+	s.server = httptest.NewServer(s)
 	t.Cleanup(s.server.Close)
 	return s
+}
+
+// NewService returns a fake push service that is not listening; serve it
+// with an http.Server. A device's endpoint is the service's URL plus "/"
+// and the device's name.
+func NewService(vapidPublic string) *Service {
+	return &Service{vapidKey: vapidPublic, devices: map[string]*device{}, statuses: map[string][]int{}}
 }
 
 // NewDevice registers a browser and returns its subscription, as
 // PushSubscription.toJSON() would.
 func (s *Service) NewDevice(t *testing.T, name string) webpush.Subscription {
 	t.Helper()
-	key, err := ecdh.P256().GenerateKey(rand.Reader)
+	sub, err := s.AddDevice(s.server.URL, name)
 	if err != nil {
 		t.Fatal(err)
 	}
+	return sub
+}
+
+// AddDevice registers a browser whose endpoint is baseURL + "/" + name,
+// where baseURL is how the application server reaches this service.
+func (s *Service) AddDevice(baseURL, name string) (webpush.Subscription, error) {
+	key, err := ecdh.P256().GenerateKey(rand.Reader)
+	if err != nil {
+		return webpush.Subscription{}, err
+	}
 	auth := make([]byte, 16)
 	if _, err := rand.Read(auth); err != nil {
-		t.Fatal(err)
+		return webpush.Subscription{}, err
 	}
 	s.mu.Lock()
 	s.devices["/"+name] = &device{key: key, auth: auth}
 	s.mu.Unlock()
 	return webpush.Subscription{
-		Endpoint: s.server.URL + "/" + name,
+		Endpoint: baseURL + "/" + name,
 		P256dh:   b64.EncodeToString(key.PublicKey().Bytes()),
 		Auth:     b64.EncodeToString(auth),
-	}
+	}, nil
 }
 
 // Answer makes the next requests to a device get these statuses, in order;
@@ -110,7 +128,9 @@ func (s *Service) Failures() []string {
 	return append([]string(nil), s.failures...)
 }
 
-func (s *Service) handle(w http.ResponseWriter, r *http.Request) {
+// ServeHTTP is the push endpoint of every device: it receives what the
+// application server sends.
+func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	dev := s.devices[r.URL.Path]
 	var status int

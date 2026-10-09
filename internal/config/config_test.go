@@ -350,3 +350,20 @@ func TestMetricsCanBeTurnedOff(t *testing.T) {
 		t.Errorf("MetricsListenAddr = %q (%v)", cfg.MetricsListenAddr, err)
 	}
 }
+
+// D-73: the end-to-end test's endpoint prefix must end at a path "/".
+func TestPushTestEndpointPrefix(t *testing.T) {
+	cfg, err := Load(env(required(nil)))
+	if err != nil || cfg.Push.TestEndpointPrefix != "" {
+		t.Fatalf("default prefix = %q (%v), want none", cfg.Push.TestEndpointPrefix, err)
+	}
+	cfg, err = Load(env(required(map[string]string{"PUSH_TEST_ENDPOINT_PREFIX": "http://localhost:18091/"})))
+	if err != nil || cfg.Push.TestEndpointPrefix != "http://localhost:18091/" {
+		t.Errorf("prefix = %q (%v)", cfg.Push.TestEndpointPrefix, err)
+	}
+	for _, bad := range []string{"http://localhost:18091", "localhost:18091/", "ftp://localhost/", "http:///x/", "http://localhost/?a=/"} {
+		if _, err := Load(env(required(map[string]string{"PUSH_TEST_ENDPOINT_PREFIX": bad}))); err == nil {
+			t.Errorf("%q accepted", bad)
+		}
+	}
+}

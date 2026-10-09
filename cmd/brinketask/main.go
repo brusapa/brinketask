@@ -114,6 +114,10 @@ func run() error {
 	accounts.OnSettingsChanged(taskService.RecomputeUserReminders)
 	sender := webpush.NewSender(cfg.Push.Keys, cfg.Push.Subject, &http.Client{Timeout: 30 * time.Second}, clk)
 	devices := notify.NewDevices(pool, clk, sender, logger)
+	if prefix := cfg.Push.TestEndpointPrefix; prefix != "" {
+		logger.Warn("PUSH_TEST_ENDPOINT_PREFIX is set: for the end-to-end test only, never in production", "prefix", prefix)
+		devices.AllowEndpointPrefix(prefix)
+	}
 	defer devices.Wait()
 	err = httpapi.Register(mux, httpapi.NewServer(accounts, taskService, devices, cfg.Push.Keys.Public), logger,
 		sameOrigin,

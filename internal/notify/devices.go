@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -48,6 +49,9 @@ type Devices struct {
 	// allowLocal lets tests register endpoints on 127.0.0.1 (see
 	// checkEndpoint); the server never sets it.
 	allowLocal bool
+	// testPrefix: endpoints starting with it pass checkEndpoint; set only
+	// by the end-to-end test (D-73).
+	testPrefix string
 	// sends tracks test messages still in flight, so shutdown can wait.
 	sends sync.WaitGroup
 }
@@ -61,6 +65,13 @@ func NewDevices(pool *pgxpool.Pool, clk clock.Clock, sender Sender, logger *slog
 // fake push service only.
 func (d *Devices) AllowLocalEndpoints() {
 	d.allowLocal = true
+}
+
+// AllowEndpointPrefix accepts endpoints that start with prefix, for the
+// end-to-end test's fake push service (D-73, PUSH_TEST_ENDPOINT_PREFIX).
+// Every other endpoint still follows the SSRF rule.
+func (d *Devices) AllowEndpointPrefix(prefix string) {
+	d.testPrefix = prefix
 }
 
 // List returns the caller's devices, oldest first.
@@ -186,7 +197,7 @@ func (d *Devices) checkEndpoint(endpoint string) error {
 	if err != nil || u.Host == "" {
 		return errors.New("not an absolute URL")
 	}
-	if d.allowLocal {
+	if d.allowLocal || (d.testPrefix != "" && strings.HasPrefix(endpoint, d.testPrefix)) {
 		return nil
 	}
 	if u.Scheme != "https" {
