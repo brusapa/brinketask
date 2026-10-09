@@ -80,28 +80,16 @@ func (q *Queries) PurgeExpiredSessions(ctx context.Context, now time.Time) (int6
 	return result.RowsAffected(), nil
 }
 
-const purgeListMembers = `-- name: PurgeListMembers :execrows
-DELETE FROM list_members m USING lists l
-WHERE l.id = m.list_id AND l.deleted_at < $1
-  AND NOT EXISTS (SELECT 1 FROM tasks t WHERE t.list_id = l.id)
-`
-
-func (q *Queries) PurgeListMembers(ctx context.Context, cutoff *time.Time) (int64, error) {
-	result, err := q.db.Exec(ctx, purgeListMembers, cutoff)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
 const purgeLists = `-- name: PurgeLists :many
 DELETE FROM lists l
-WHERE l.deleted_at < $1 AND NOT EXISTS (SELECT 1 FROM tasks t WHERE t.list_id = l.id)
+WHERE l.deleted_at < $1
+  AND NOT EXISTS (SELECT 1 FROM tasks t WHERE t.list_id = l.id OR t.deleted_with_list_id = l.id)
 RETURNING l.seq
 `
 
-// A list goes once its tasks are gone; deleting a list deletes its tasks
-// at the same moment (D-20), so they are purged together.
+// A list goes once no task refers to it, by list_id or deleted_with_list_id;
+// deleting a list deletes its tasks at the same moment (D-20), so they are
+// purged together. Its memberships go with it (ON DELETE CASCADE).
 func (q *Queries) PurgeLists(ctx context.Context, cutoff *time.Time) ([]int64, error) {
 	rows, err := q.db.Query(ctx, purgeLists, cutoff)
 	if err != nil {

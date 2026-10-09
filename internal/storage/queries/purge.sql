@@ -36,16 +36,13 @@ WHERE t.id = c.task_id AND t.deleted_at < @cutoff;
 -- name: PurgeTasks :many
 DELETE FROM tasks WHERE deleted_at < @cutoff RETURNING seq;
 
--- name: PurgeListMembers :execrows
-DELETE FROM list_members m USING lists l
-WHERE l.id = m.list_id AND l.deleted_at < @cutoff
-  AND NOT EXISTS (SELECT 1 FROM tasks t WHERE t.list_id = l.id);
-
 -- name: PurgeLists :many
--- A list goes once its tasks are gone; deleting a list deletes its tasks
--- at the same moment (D-20), so they are purged together.
+-- A list goes once no task refers to it, by list_id or deleted_with_list_id;
+-- deleting a list deletes its tasks at the same moment (D-20), so they are
+-- purged together. Its memberships go with it (ON DELETE CASCADE).
 DELETE FROM lists l
-WHERE l.deleted_at < @cutoff AND NOT EXISTS (SELECT 1 FROM tasks t WHERE t.list_id = l.id)
+WHERE l.deleted_at < @cutoff
+  AND NOT EXISTS (SELECT 1 FROM tasks t WHERE t.list_id = l.id OR t.deleted_with_list_id = l.id)
 RETURNING l.seq;
 
 -- name: PurgeTags :many

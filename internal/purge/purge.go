@@ -141,9 +141,6 @@ func purge(ctx context.Context, q *dbgen.Queries, cutoff, now time.Time, r *Resu
 	}
 	r.Tasks = r.note(seqs)
 
-	if _, err = q.PurgeListMembers(ctx, &cutoff); err != nil {
-		return err
-	}
 	if seqs, err = q.PurgeLists(ctx, &cutoff); err != nil {
 		return err
 	}
