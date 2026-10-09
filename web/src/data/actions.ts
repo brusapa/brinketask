@@ -14,7 +14,7 @@ import type { Clock } from "../lib/clock";
 import { dateIn } from "../lib/dates";
 import { uuidv7 } from "../lib/ids";
 import { positionAtEnd } from "../lib/positions";
-import type { Replica } from "./replica";
+import type { Replica, TaskRow } from "./replica";
 import type { Syncer } from "./sync";
 
 export interface ActionsOptions {
@@ -355,6 +355,11 @@ export class Actions {
         this.replica.setLocally("items", before);
       },
     );
+  }
+
+  /** The task as the replica has it now. */
+  currentTask(id: string): TaskRow | undefined {
+    return this.replica.getSnapshot().tasks.get(id);
   }
 
   /** Today's date in the profile zone, for quick add (D-53). */

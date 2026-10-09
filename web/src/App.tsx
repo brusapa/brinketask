@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 
 import { Layout } from "./app/Layout";
 import { useNow, useProfile, useSnapshot } from "./app/services";
+import { TaskDetail } from "./components/detail/TaskDetail";
 import { TaskListView } from "./components/TaskListView";
 import { dateIn } from "./lib/dates";
 import { formatLongDay } from "./lib/format";
@@ -20,7 +21,11 @@ export function App() {
 export function AppRoutes() {
   return (
     <Routes>
-      <Route element={<Layout detail={() => null} />}>
+      <Route
+        element={
+          <Layout detail={(taskId, close) => <TaskDetail taskId={taskId} onClose={close} />} />
+        }
+      >
         <Route index element={<InboxScreen />} />
         <Route path="today" element={<TodayScreen />} />
         <Route path="next7" element={<Next7Screen />} />

@@ -20,7 +20,8 @@
     "undo": "Undo",
     "dismiss": "Dismiss",
     "close": "Close",
-    "back": "Back"
+    "back": "Back",
+    "done": "Done"
   },
   "errors": {
     "network": "No connection to the server. Your change was not saved.",
@@ -70,7 +71,11 @@
     "delete": "Delete tag",
     "deleteConfirm": "Delete the tag “{{name}}”? It is removed from every task. This cannot be undone.",
     "name": "Name",
-    "actions": "Actions for tag {{name}}"
+    "actions": "Actions for tag {{name}}",
+    "add": "Add tag",
+    "create": "Create tag “{{name}}”",
+    "remove": "Remove tag {{name}}",
+    "noneLeft": "No more tags"
   },
   "views": {
     "tasks": "Tasks",
@@ -96,7 +101,8 @@
     "none": "No priority",
     "low": "low",
     "medium": "medium",
-    "high": "high"
+    "high": "high",
+    "edit": "Priority: {{priority}}"
   },
   "task": {
     "complete": "Complete task",
@@ -104,6 +110,47 @@
     "uncomplete": "Mark “{{title}}” as not completed",
     "completed": "Task completed",
     "overdue": "Overdue:",
-    "checklistProgress": "{{done}} of {{total}} checklist items done"
+    "checklistProgress": "{{done}} of {{total}} checklist items done",
+    "delete": "Delete task",
+    "deleted": "Task deleted"
+  },
+  "checklist": {
+    "label": "Checklist",
+    "add": "Add item",
+    "title": "Item",
+    "edit": "Edit item “{{title}}”",
+    "delete": "Delete item “{{title}}”",
+    "check": "Mark “{{title}}” as done",
+    "uncheck": "Mark “{{title}}” as not done"
+  },
+  "detail": {
+    "label": "Task details",
+    "title": "Title",
+    "description": "Description",
+    "addDescription": "Add a description",
+    "editDescription": "Edit description",
+    "list": "List",
+    "tags": "Tags",
+    "created": "Created {{date}}"
+  },
+  "due": {
+    "none": "No date",
+    "title": "Due date",
+    "edit": "Due: {{due}}",
+    "date": "Date",
+    "time": "Time",
+    "today": "Today",
+    "tomorrow": "Tomorrow",
+    "clear": "Clear",
+    "fixedZone": "Fixed time zone",
+    "zone": "Time zone",
+    "previousMonth": "Previous month",
+    "nextMonth": "Next month"
+  },
+  "priorityLabel": {
+    "none": "No priority",
+    "low": "Low",
+    "medium": "Medium",
+    "high": "High"
   }
 }
