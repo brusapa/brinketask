@@ -1500,3 +1500,11 @@ textarea.input {
     min-height: 44px;
   }
 }
+
+/* React Aria renders the label of a radio group as a span, not a label:
+   give every field heading in the repeat editor the same look. */
+.repeat-form .field > :first-child {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
