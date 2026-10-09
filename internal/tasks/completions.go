@@ -7,12 +7,14 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/brusapa/brinketask/internal/recurrence"
 	"github.com/brusapa/brinketask/internal/storage/dbgen"
 )
 
 // Kinds of completion record (SPEC section 4).
 const (
 	kindCompleted = "completed"
+	kindSkipped   = "skipped"
 )
 
 // CompleteInput is the body of /complete.
@@ -77,8 +79,10 @@ const (
 	cursorHistory     = "history"
 )
 
-// Complete marks one of the caller's live, non-recurring tasks done and
-// records it (SPEC section 5, "Complete and undo").
+// Complete records the completion of one of the caller's live tasks
+// (SPEC section 5, "Complete and undo"): a task without a rule becomes
+// done; a recurring task advances to its next occurrence, or becomes done
+// at the end of its series (R-2 to R-5).
 //
 //   - A completion_id already recorded for this task answers applied=true
 //     with that record and changes nothing (D-24); if that record was
@@ -90,6 +94,19 @@ const (
 //     (D-37).
 //   - completed_at defaults to now; a future value is clamped to now.
 func (s *Service) Complete(ctx context.Context, userID, taskID uuid.UUID, in CompleteInput) (CompletionResult, error) {
+	return s.record(ctx, userID, taskID, in, kindCompleted)
+}
+
+// Skip passes over the current occurrence of a recurring task (R-6): the
+// same as Complete, with a "skipped" record, which counts towards COUNT
+// and never shows in the Completed section. A task without a rule is a
+// conflict (D-62).
+func (s *Service) Skip(ctx context.Context, userID, taskID uuid.UUID, in CompleteInput) (CompletionResult, error) {
+	return s.record(ctx, userID, taskID, in, kindSkipped)
+}
+
+// record is Complete and Skip; kind tells them apart.
+func (s *Service) record(ctx context.Context, userID, taskID uuid.UUID, in CompleteInput, kind string) (CompletionResult, error) {
 	var result CompletionResult
 	err := s.inTx(ctx, func(q *dbgen.Queries) error {
 		task, err := q.LockTaskForUser(ctx, dbgen.LockTaskForUserParams{UserID: userID, ID: taskID})
@@ -111,16 +128,15 @@ func (s *Service) Complete(ctx context.Context, userID, taskID uuid.UUID, in Com
 			return err
 		}
 
-		if task.Rrule != nil {
-			// Unreachable until recurrence exists (D-34).
-			return &NotImplementedError{Feature: "recurrence (rrule)"}
+		if kind == kindSkipped && task.Rrule == nil {
+			return conflict("only an occurrence of a recurring task can be skipped")
 		}
 		switch task.Status {
 		case StatusDone:
 			result, err = s.unchanged(ctx, q, task, false, nil)
 			return err
 		case StatusDropped:
-			return conflict("a dropped task must be reopened before it is completed")
+			return conflict("a dropped task must be reopened first")
 		}
 		if task.DueDate != nil && in.OccurrenceDueDate == nil {
 			return invalid([]FieldError{{
@@ -138,13 +154,27 @@ func (s *Service) Complete(ctx context.Context, userID, taskID uuid.UUID, in Com
 			completedAt = *in.CompletedAt
 		}
 		previous := task
-		task.Status = StatusDone
-		task.CompletedAt = &completedAt
+		advanced := false
+		if task.Rrule == nil {
+			task.Status = StatusDone
+			task.CompletedAt = &completedAt
+		} else {
+			advanced, err = s.advance(ctx, q, userID, &task, completedAt)
+			if err != nil {
+				return err
+			}
+		}
 		if err := s.writeTask(ctx, q, &task); err != nil {
 			return err
 		}
+		if advanced {
+			// R-7: the next occurrence starts with an unticked checklist.
+			if err := s.uncheckItems(ctx, q, task.ID); err != nil {
+				return err
+			}
+		}
 		record := dbgen.InsertCompletionParams{
-			ID: in.CompletionID, TaskID: taskID, Kind: kindCompleted,
+			ID: in.CompletionID, TaskID: taskID, Kind: kind,
 			OccurrenceDueDate: in.OccurrenceDueDate, CompletedAt: completedAt,
 			PrevDueDate: previous.DueDate, PrevDueTime: previous.DueTime,
 			PrevRecurrenceDoneCount: previous.RecurrenceDoneCount, PrevStatus: previous.Status,
@@ -166,9 +196,78 @@ func (s *Service) Complete(ctx context.Context, userID, taskID uuid.UUID, in Com
 		return CompletionResult{}, conflict("the completion id belongs to another task")
 	}
 	if err != nil {
-		return CompletionResult{}, wrap("complete task", err)
+		return CompletionResult{}, wrap(kind+" task", err)
 	}
 	return result, nil
+}
+
+// advance moves a recurring task past the occurrence just completed or
+// skipped. It counts the occurrence (D-57); then either the series is over
+// (COUNT reached, or the next date past UNTIL: R-5) and the task becomes
+// done, or the due date moves to the next occurrence (R-2 or R-3). The due
+// time and zone stay as they are (R-4). advanced reports the second case.
+//
+// "Today" and the completion date are calendar dates in the user's
+// profile zone (SPEC section 5).
+func (s *Service) advance(ctx context.Context, q *dbgen.Queries, userID uuid.UUID, task *dbgen.Task, completedAt time.Time) (advanced bool, err error) {
+	rule, err := recurrence.Parse(*task.Rrule)
+	if err != nil {
+		// Stored rules were validated when written.
+		return false, fmt.Errorf("stored rule %q: %w", *task.Rrule, err)
+	}
+	user, err := q.GetUser(ctx, userID)
+	if err != nil {
+		return false, err
+	}
+	zone, err := time.LoadLocation(user.Timezone)
+	if err != nil {
+		return false, fmt.Errorf("user time zone: %w", err)
+	}
+
+	task.RecurrenceDoneCount++
+	var next time.Time
+	ok := false
+	switch {
+	case rule.Count != 0 && int(task.RecurrenceDoneCount) >= rule.Count:
+		// R-5: the last occurrence of a COUNT series.
+	case task.RepeatFrom == RepeatFromCompletion:
+		next, ok = recurrence.NextFromCompletion(rule, dateOf(completedAt, zone))
+	default:
+		start := task.DueDate
+		if task.RecurrenceStart != nil {
+			start = task.RecurrenceStart
+		}
+		next, ok = recurrence.NextDue(rule, *start, *task.DueDate, dateOf(s.now(), zone))
+	}
+	if !ok {
+		task.Status = StatusDone
+		task.CompletedAt = &completedAt
+		return false, nil
+	}
+	task.DueDate = &next
+	return true, nil
+}
+
+// dateOf is the calendar date of an instant in a zone, at midnight UTC as
+// due dates are stored.
+func dateOf(instant time.Time, zone *time.Location) time.Time {
+	year, month, day := instant.In(zone).Date()
+	return time.Date(year, month, day, 0, 0, 0, 0, time.UTC)
+}
+
+// uncheckItems unticks the live checklist items of a task, each one a
+// write with its own seq (D-07). The task's lock is held, so its items are
+// locked after it, as everywhere else.
+func (s *Service) uncheckItems(ctx context.Context, q *dbgen.Queries, taskID uuid.UUID) error {
+	ids, err := q.LockDoneItemIDsOfTask(ctx, taskID)
+	if err != nil || len(ids) == 0 {
+		return err
+	}
+	seqs, err := reserveSeqs(ctx, q, len(ids))
+	if err != nil {
+		return err
+	}
+	return q.UncheckItems(ctx, dbgen.UncheckItemsParams{Ids: ids, Seqs: seqs, Now: s.now()})
 }
 
 // Uncomplete undoes a completion record of one of the caller's live tasks,
