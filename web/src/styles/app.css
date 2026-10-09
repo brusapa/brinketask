@@ -767,7 +767,10 @@ textarea.input {
   margin-bottom: 12px;
 }
 
-.field > label {
+/* React Aria renders some labels as spans (time and date fields, radio
+   groups); its default class names them all. */
+.field > label,
+.field > .react-aria-Label {
   font-size: 12px;
   font-weight: 600;
   color: var(--color-text-muted);
@@ -1568,4 +1571,9 @@ textarea.input {
 .reminder-idle {
   color: var(--color-text-muted);
   text-decoration: line-through;
+}
+
+.reminder-actions {
+  display: flex;
+  gap: 16px;
 }

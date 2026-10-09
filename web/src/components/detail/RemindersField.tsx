@@ -118,29 +118,32 @@ export function RemindersField({ task }: { task: TaskRow }) {
           ))}
         </ul>
       )}
-      <MenuTrigger>
-        <Button className="link-button" isDisabled={counted >= maxReminders}>
-          {t("reminders.add")}
-        </Button>
-        <Popover className="popover">
-          <Menu
-            className="menu"
-            onAction={(key) => {
-              if (key === "custom") setPicking(true);
-              else void actions.addReminder(task.id, { offsetMinutes: Number(key) });
-            }}
-          >
-            {presets(task).map((offset) => (
-              <MenuItem key={offset} id={String(offset)} className="menu-item">
-                {describeOffset(offset, timed, profile.all_day_reminder_time, t, i18n.language)}
+      <div className="reminder-actions">
+        <MenuTrigger>
+          <Button className="link-button" isDisabled={counted >= maxReminders}>
+            {t("reminders.add")}
+          </Button>
+          <Popover className="popover">
+            <Menu
+              className="menu"
+              onAction={(key) => {
+                if (key === "custom") setPicking(true);
+                else void actions.addReminder(task.id, { offsetMinutes: Number(key) });
+              }}
+            >
+              {presets(task).map((offset) => (
+                <MenuItem key={offset} id={String(offset)} className="menu-item">
+                  {describeOffset(offset, timed, profile.all_day_reminder_time, t, i18n.language)}
+                </MenuItem>
+              ))}
+              <MenuItem id="custom" className="menu-item">
+                {t("reminders.custom")}
               </MenuItem>
-            ))}
-            <MenuItem id="custom" className="menu-item">
-              {t("reminders.custom")}
-            </MenuItem>
-          </Menu>
-        </Popover>
-      </MenuTrigger>
+            </Menu>
+          </Popover>
+        </MenuTrigger>
+        {task.status === "open" && <SnoozeMenu task={task} />}
+      </div>
       {picking && (
         <AtDialog
           zone={zone}
@@ -219,7 +222,7 @@ function AtDialog({
 }
 
 /** Snooze from the detail: 10 min, 1 h, or tomorrow at the default time (D-64). */
-export function SnoozeMenu({ task }: { task: TaskRow }) {
+function SnoozeMenu({ task }: { task: TaskRow }) {
   const { t, i18n } = useTranslation();
   const { actions, clock, toasts } = useServices();
   const profile = useProfile();
@@ -238,10 +241,7 @@ export function SnoozeMenu({ task }: { task: TaskRow }) {
 
   return (
     <MenuTrigger>
-      <Button className="header-button">
-        <Bell size={16} strokeWidth={1.5} aria-hidden="true" />
-        <span>{t("reminders.snooze")}</span>
-      </Button>
+      <Button className="link-button">{t("reminders.snooze")}</Button>
       <Popover className="popover">
         <Menu
           className="menu"

@@ -84,7 +84,7 @@ export VAPID_SUBJECT=mailto:dev@example.com
 go run ./cmd/brinketask
 ```
 
-To work on the web client with hot reload, run the server on the host as above but with `PUBLIC_URL=http://localhost:5173`, then `cd web && npm run dev`. The Vite dev server on port 5173 serves the client and forwards `/api` and `/auth` to the server on 8081, so the browser still sees one origin. Open `http://localhost:5173`.
+To work on the web client with hot reload, run the server on the host as above but with `PUBLIC_URL=http://localhost:5173`, then `cd web && npm run dev`. The Vite dev server on port 5173 serves the client and forwards `/api` and `/auth` to the server on 8081, so the browser still sees one origin. Open `http://localhost:5173`. The service worker, and with it notifications, exists only in a build (`make build`, or the app in compose): the Vite dev server does not serve `/sw.js`.
 
 To log in, open the link the setup script printed (it signs you in to Pocket ID as `dev`), then `/auth/login` on the app (`http://localhost:8080` in compose, `http://localhost:8081` on the host, `http://localhost:5173` with Vite). Use `localhost`, not `127.0.0.1`: the cookies and the OIDC callback are bound to the `PUBLIC_URL` origin.
 
