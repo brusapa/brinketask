@@ -8,6 +8,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
+
+	"github.com/brusapa/brinketask/internal/localtime"
 )
 
 // Kinds of message the service worker receives.
@@ -33,6 +36,26 @@ type payload struct {
 	DueTz    string     `json:"due_tz,omitempty"`
 	Timezone string     `json:"timezone,omitempty"`
 	FireAt   *time.Time `json:"fire_at,omitempty"`
+}
+
+// reminderPayload builds the message of a fired reminder.
+func reminderPayload(taskID, reminderID uuid.UUID, title, listName string, isInbox bool,
+	dueDate *time.Time, dueTime pgtype.Time, dueTz *string, zone string, fireAt time.Time,
+) ([]byte, error) {
+	p := payload{
+		Type: kindReminder, TaskID: &taskID, ReminderID: &reminderID, Title: title,
+		ListName: listName, IsInbox: isInbox, Timezone: zone, FireAt: &fireAt,
+	}
+	if dueDate != nil {
+		p.DueDate = dueDate.Format(time.DateOnly)
+	}
+	if dueTime.Valid {
+		p.DueTime = localtime.Format(dueTime)
+	}
+	if dueTz != nil {
+		p.DueTz = *dueTz
+	}
+	return json.Marshal(p)
 }
 
 // testPayload is the message of POST /push/subscriptions/{id}/test.

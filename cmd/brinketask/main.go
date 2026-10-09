@@ -130,6 +130,20 @@ func run() error {
 		return err
 	}
 
+	// The reminder scheduler runs in this process (SPEC section 2) until
+	// shutdown; schedulerDone closes when it has stopped.
+	scheduler := notify.NewScheduler(pool, clk, taskService, sender, cfg.ReminderMaxLateness, logger)
+	schedulerCtx, stopScheduler := context.WithCancel(ctx)
+	schedulerDone := make(chan struct{})
+	go func() {
+		defer close(schedulerDone)
+		scheduler.Run(schedulerCtx, cfg.SchedulerInterval)
+	}()
+	defer func() {
+		stopScheduler()
+		<-schedulerDone
+	}()
+
 	server := &http.Server{
 		Addr:              cfg.ListenAddr,
 		Handler:           mux,
