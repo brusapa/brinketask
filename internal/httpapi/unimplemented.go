@@ -31,19 +31,3 @@ func (Server) TestPushSubscription(context.Context, TestPushSubscriptionRequestO
 func (Server) GetVapidPublicKey(context.Context, GetVapidPublicKeyRequestObject) (GetVapidPublicKeyResponseObject, error) {
 	return GetVapidPublicKeydefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
 }
-
-func (Server) DeleteReminder(context.Context, DeleteReminderRequestObject) (DeleteReminderResponseObject, error) {
-	return DeleteReminderdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
-}
-
-func (Server) PatchReminder(context.Context, PatchReminderRequestObject) (PatchReminderResponseObject, error) {
-	return PatchReminderdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
-}
-
-func (Server) CreateReminder(context.Context, CreateReminderRequestObject) (CreateReminderResponseObject, error) {
-	return CreateReminderdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
-}
-
-func (Server) SnoozeTask(context.Context, SnoozeTaskRequestObject) (SnoozeTaskResponseObject, error) {
-	return SnoozeTaskdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
-}

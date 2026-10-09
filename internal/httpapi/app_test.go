@@ -39,6 +39,9 @@ func newTestApp(t *testing.T) *testApp {
 	clk := clock.NewFixed(testStart)
 	accounts := account.NewService(pool, clk)
 	taskService := tasks.NewService(pool, clk)
+	// Changing the profile zone or default time recomputes reminders (SPEC
+	// section 6), in the transaction of the change.
+	accounts.OnSettingsChanged(taskService.RecomputeUserReminders)
 	// Sessions outlive the 30-day restore window that some tests step over;
 	// expiry has its own tests in package session.
 	sessions := session.NewManager(pool, clk, 365*24*time.Hour, 365*24*time.Hour)

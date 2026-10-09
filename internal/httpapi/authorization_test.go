@@ -26,6 +26,9 @@ func (a *testApp) snapshot(t *testing.T, u user) string {
 			SELECT c.id || ':' || c.version || ':' || c.seq FROM checklist_items c
 			JOIN tasks t ON t.id = c.task_id JOIN list_members m ON m.list_id = t.list_id WHERE m.user_id = $1
 			UNION ALL
+			SELECT r.id || ':' || r.version || ':' || r.seq FROM reminders r
+			JOIN tasks t ON t.id = r.task_id JOIN list_members m ON m.list_id = t.list_id WHERE m.user_id = $1
+			UNION ALL
 			SELECT id || ':' || version || ':' || seq FROM tags WHERE owner_id = $1
 			UNION ALL
 			SELECT id || ':' || coalesce(undone_at::text, '') FROM task_completions c
@@ -49,6 +52,8 @@ func TestAuthorizationMatrix(t *testing.T) {
 	tag := a.createTag(t, alice, "alice")
 	task := a.taskWith(t, alice, list.Id, "secret", "a", fmt.Sprintf(`,"tag_ids":[%q]`, tag.Id))
 	item := a.createItem(t, alice, task, "item", "a")
+	a.call(t, alice, http.MethodPatch, "/tasks/"+task.String(), `{"due_date":"2026-10-10"}`)
+	reminder := a.addReminder(t, alice, task, relativeBody(t, 0), http.StatusCreated)
 	completed := a.createTask(t, alice, alice.inboxID, "done")
 	completion := newID(t)
 	a.complete(t, alice, completed.Id, completion, "")
@@ -75,6 +80,10 @@ func TestAuthorizationMatrix(t *testing.T) {
 		{http.MethodPost, taskPath + "/checklist-items", newItemBody(newID(t), "x", "a")},
 		{http.MethodPatch, "/checklist-items/" + item.Id.String(), `{"is_done":true}`},
 		{http.MethodDelete, "/checklist-items/" + item.Id.String(), ""},
+		{http.MethodPost, taskPath + "/reminders", relativeBody(t, 5)},
+		{http.MethodPatch, "/reminders/" + reminder.Id.String(), `{"offset_minutes":5}`},
+		{http.MethodDelete, "/reminders/" + reminder.Id.String(), ""},
+		{http.MethodPost, taskPath + "/snooze", fmt.Sprintf(`{"reminder_id":%q,"until":"2026-10-09T10:00:00Z"}`, newID(t))},
 		{http.MethodPatch, "/tags/" + tag.Id.String(), `{"name":"x"}`},
 		{http.MethodDelete, "/tags/" + tag.Id.String(), ""},
 		{http.MethodGet, "/tasks?list_id=" + list.Id.String(), ""},

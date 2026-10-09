@@ -65,3 +65,18 @@ func invalid(fields []FieldError) error {
 	}
 	return &ValidationError{Fields: fields}
 }
+
+// prefixFields puts prefix before the field pointers of a validation
+// error, so an error about a reminder inside a task body names it, e.g.
+// "/reminders/0/offset_minutes". Other errors pass unchanged.
+func prefixFields(err error, prefix string) error {
+	var v *ValidationError
+	if !errors.As(err, &v) {
+		return err
+	}
+	fields := make([]FieldError, len(v.Fields))
+	for i, f := range v.Fields {
+		fields[i] = FieldError{Field: prefix + f.Field, Message: f.Message}
+	}
+	return &ValidationError{Fields: fields}
+}

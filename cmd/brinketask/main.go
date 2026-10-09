@@ -106,6 +106,9 @@ func run() error {
 	// session that Authenticate resolves.
 	accounts := account.NewService(pool, clk)
 	taskService := tasks.NewService(pool, clk)
+	// Changing the profile zone or default time recomputes reminders (SPEC
+	// section 6), in the transaction of the change.
+	accounts.OnSettingsChanged(taskService.RecomputeUserReminders)
 	err = httpapi.Register(mux, httpapi.NewServer(accounts, taskService), logger,
 		sameOrigin,
 		httpapi.Authenticate(sessions, logger),

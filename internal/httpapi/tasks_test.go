@@ -135,15 +135,6 @@ func TestCreateTaskIsIdempotent(t *testing.T) {
 }
 
 // D-34: recurrence and reminders arrive in later phases.
-// D-34: reminders arrive in phase 5; rrule is accepted since phase 4.
-func TestCreateTaskLaterPhaseFields(t *testing.T) {
-	a := newTestApp(t)
-	alice := a.signUp(t, "alice")
-	body := fmt.Sprintf(`{"id":%q,"list_id":%q,"title":"x","position":"a0","due_date":"2026-10-31",`+
-		`"reminders":[{"id":%q,"kind":"relative","offset_minutes":10}]}`, newID(t), alice.inboxID, newID(t))
-	wantProblem(t, a.call(t, alice, http.MethodPost, "/tasks", body), http.StatusNotImplemented, ProblemCodeNotImplemented)
-}
-
 func TestCreateTaskValidation(t *testing.T) {
 	a := newTestApp(t)
 	alice := a.signUp(t, "alice")

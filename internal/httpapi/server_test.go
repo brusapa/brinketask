@@ -95,9 +95,8 @@ func TestOperationsAnswerNotImplemented(t *testing.T) {
 	tests := []struct {
 		method, path, contentType, body string
 	}{
-		// Operations of later phases (reminders, push).
+		// Operations of later phases (push, until its commit).
 		{http.MethodGet, "/api/v1/push/subscriptions", "", ""},
-		{http.MethodDelete, "/api/v1/reminders/" + someID, "", ""},
 		{http.MethodPost, "/api/v1/push/subscriptions/" + someID + "/test", "", ""},
 	}
 	for _, tt := range tests {

@@ -173,6 +173,11 @@ func (s *Service) record(ctx context.Context, userID, taskID uuid.UUID, in Compl
 				return err
 			}
 		}
+		// R-8: absolute and snooze reminders go; relative ones follow the
+		// new date, or stop for a done task.
+		if err := s.recompute(ctx, q, userID, task, true); err != nil {
+			return err
+		}
 		record := dbgen.InsertCompletionParams{
 			ID: in.CompletionID, TaskID: taskID, Kind: kind,
 			OccurrenceDueDate: in.OccurrenceDueDate, CompletedAt: completedAt,
@@ -314,6 +319,10 @@ func (s *Service) Uncomplete(ctx context.Context, userID, taskID, completionID u
 			task.DueTz = nil
 		}
 		if err := s.writeTask(ctx, q, &task); err != nil {
+			return err
+		}
+		// Reminders deleted by R-8 do not come back (SPEC section 5).
+		if err := s.recompute(ctx, q, userID, task, false); err != nil {
 			return err
 		}
 		now := s.now()

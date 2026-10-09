@@ -56,8 +56,8 @@ func (s *Service) Profile(ctx context.Context, userID uuid.UUID) (Profile, error
 // returns ErrInvalidTimezone or ErrInvalidTime, and changes nothing, when a
 // value is invalid.
 //
-// Changing either setting will recompute pending reminders once they exist
-// (phase 5); in phase 1 there are none.
+// Changing either setting recomputes pending reminders in the same
+// transaction, through the hook set with OnSettingsChanged.
 func (s *Service) UpdateSettings(ctx context.Context, userID uuid.UUID, settings Settings) (Profile, error) {
 	params := dbgen.UpdateUserSettingsParams{ID: userID, Now: s.clock.Now()}
 	if settings.Timezone != nil {
@@ -74,15 +74,33 @@ func (s *Service) UpdateSettings(ctx context.Context, userID uuid.UUID, settings
 		params.AllDayReminderTime = t
 	}
 
-	q := dbgen.New(s.pool)
-	user, err := q.UpdateUserSettings(ctx, params)
+	var profile Profile
+	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		q := dbgen.New(tx)
+		before, err := q.GetUser(ctx, userID)
+		if err != nil {
+			return err
+		}
+		user, err := q.UpdateUserSettings(ctx, params)
+		if err != nil {
+			return err
+		}
+		changed := user.Timezone != before.Timezone || user.AllDayReminderTime != before.AllDayReminderTime
+		if changed && s.settingsChanged != nil {
+			if err := s.settingsChanged(ctx, q, userID); err != nil {
+				return err
+			}
+		}
+		profile, err = s.profile(ctx, q, user)
+		return err
+	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Profile{}, ErrNotFound
 	}
 	if err != nil {
 		return Profile{}, fmt.Errorf("account: update settings: %w", err)
 	}
-	return s.profile(ctx, q, user)
+	return profile, nil
 }
 
 func (s *Service) profile(ctx context.Context, q *dbgen.Queries, user dbgen.User) (Profile, error) {

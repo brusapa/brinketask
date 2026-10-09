@@ -193,9 +193,13 @@ func (s *Service) DeleteList(ctx context.Context, userID, id uuid.UUID) error {
 		if err != nil {
 			return err
 		}
-		return q.DeleteTasksWithList(ctx, dbgen.DeleteTasksWithListParams{
+		err = q.DeleteTasksWithList(ctx, dbgen.DeleteTasksWithListParams{
 			Now: now, ListID: id, Ids: taskIDs, Seqs: seqs,
 		})
+		if err != nil {
+			return err
+		}
+		return s.recomputeTasks(ctx, q, userID, taskIDs)
 	})
 	return wrap("delete list", err)
 }
@@ -240,7 +244,11 @@ func (s *Service) RestoreList(ctx context.Context, userID, id uuid.UUID) (List, 
 		if err != nil {
 			return err
 		}
-		return q.RestoreTasksWithList(ctx, dbgen.RestoreTasksWithListParams{Now: now, Ids: taskIDs, Seqs: seqs})
+		err = q.RestoreTasksWithList(ctx, dbgen.RestoreTasksWithListParams{Now: now, Ids: taskIDs, Seqs: seqs})
+		if err != nil {
+			return err
+		}
+		return s.recomputeTasks(ctx, q, userID, taskIDs)
 	})
 	if err != nil {
 		return List{}, wrap("restore list", err)

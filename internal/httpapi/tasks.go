@@ -45,15 +45,19 @@ func (s Server) CreateTask(ctx context.Context, request CreateTaskRequestObject)
 // newTaskFromAPI applies the contract's defaults to optional fields.
 func newTaskFromAPI(body *TaskCreate) tasks.NewTask {
 	in := tasks.NewTask{
-		ID:           body.Id,
-		ListID:       body.ListId,
-		Title:        body.Title,
-		Position:     body.Position,
-		RepeatFrom:   string(RepeatFromDue),
-		DueTime:      nullableToPointer(body.DueTime),
-		DueTz:        nullableToPointer(body.DueTz),
-		Rrule:        nullableToPointer(body.Rrule),
-		HasReminders: body.Reminders != nil && len(*body.Reminders) > 0,
+		ID:         body.Id,
+		ListID:     body.ListId,
+		Title:      body.Title,
+		Position:   body.Position,
+		RepeatFrom: string(RepeatFromDue),
+		DueTime:    nullableToPointer(body.DueTime),
+		DueTz:      nullableToPointer(body.DueTz),
+		Rrule:      nullableToPointer(body.Rrule),
+	}
+	if body.Reminders != nil {
+		for _, r := range *body.Reminders {
+			in.Reminders = append(in.Reminders, newReminderFromAPI(r))
+		}
 	}
 	if date := nullableToPointer(body.DueDate); date != nil {
 		in.DueDate = dateFromAPI(date)

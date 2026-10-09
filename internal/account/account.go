@@ -40,6 +40,20 @@ type Identity struct {
 type Service struct {
 	pool  *pgxpool.Pool
 	clock clock.Clock
+	// settingsChanged runs in the transaction of UpdateSettings: pending
+	// reminders depend on the zone and default time (SPEC section 6).
+	settingsChanged SettingsHook
+}
+
+// SettingsHook is called, in the same transaction, after a user's
+// settings change.
+type SettingsHook func(ctx context.Context, q *dbgen.Queries, userID uuid.UUID) error
+
+// OnSettingsChanged sets the hook UpdateSettings calls. main wires it to
+// the reminder recomputation of package tasks, which this package does not
+// import.
+func (s *Service) OnSettingsChanged(hook SettingsHook) {
+	s.settingsChanged = hook
 }
 
 // NewService returns a Service backed by pool, reading time from clk.
