@@ -21,6 +21,10 @@ type Config struct {
 	ListenAddr  string
 	LogLevel    slog.Level
 
+	// MetricsListenAddr is where /metrics listens (D-72); empty disables
+	// metrics.
+	MetricsListenAddr string
+
 	// PublicURL is the origin the browser uses to reach the server, e.g.
 	// "https://tasks.example.com", without a trailing slash. The OIDC
 	// redirect URL and the same-origin check derive from it.
@@ -47,6 +51,11 @@ type Push struct {
 	Keys webpush.Keys
 	// Subject is the contact the push services see: mailto: or https:.
 	Subject string
+	// TestEndpointPrefix, for the end-to-end test only, is a URL prefix
+	// whose endpoints are accepted although they break the SSRF rule: the
+	// fake push service runs on localhost over http (D-73). Never set in
+	// production.
+	TestEndpointPrefix string
 }
 
 // OIDC identifies the server as a confidential client of the OIDC provider
@@ -65,6 +74,7 @@ type LookupFunc func(key string) (value string, ok bool)
 
 const (
 	defaultListenAddr         = ":8080"
+	defaultMetricsListenAddr  = ":9090"
 	defaultSessionIdleTimeout = 7 * 24 * time.Hour
 	defaultSessionMaxAge      = 30 * 24 * time.Hour
 	defaultSchedulerInterval  = 15 * time.Second
@@ -76,6 +86,7 @@ const (
 func Load(lookup LookupFunc) (Config, error) {
 	cfg := Config{
 		ListenAddr:          defaultListenAddr,
+		MetricsListenAddr:   defaultMetricsListenAddr,
 		LogLevel:            slog.LevelInfo,
 		SessionIdleTimeout:  defaultSessionIdleTimeout,
 		SessionMaxAge:       defaultSessionMaxAge,
@@ -90,6 +101,11 @@ func Load(lookup LookupFunc) (Config, error) {
 
 	if value, ok := lookup("LISTEN_ADDR"); ok && value != "" {
 		cfg.ListenAddr = value
+	}
+
+	// Set but empty means "no metrics", so unset and empty differ here.
+	if value, ok := lookup("METRICS_LISTEN_ADDR"); ok {
+		cfg.MetricsListenAddr = value
 	}
 
 	if value, ok := lookup("LOG_LEVEL"); ok && value != "" {
@@ -155,7 +171,18 @@ func loadPush(lookup LookupFunc) (Push, error) {
 	if !strings.HasPrefix(subject, "mailto:") && !strings.HasPrefix(subject, "https://") {
 		return Push{}, errors.New("config: VAPID_SUBJECT must be a mailto: or https: URL")
 	}
-	return Push{Keys: keys, Subject: subject}, nil
+	push := Push{Keys: keys, Subject: subject}
+	if prefix, _ := lookup("PUSH_TEST_ENDPOINT_PREFIX"); prefix != "" {
+		// A prefix that ends at a path "/" cannot be stretched to another
+		// host ("http://localhost:1" would also match "http://localhost:18").
+		u, err := url.Parse(prefix)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" ||
+			!strings.HasSuffix(u.Path, "/") || u.RawQuery != "" || u.Fragment != "" {
+			return Push{}, errors.New("config: PUSH_TEST_ENDPOINT_PREFIX must be an http(s) URL ending in /")
+		}
+		push.TestEndpointPrefix = prefix
+	}
+	return push, nil
 }
 
 // parsePublicURL accepts an origin: scheme and host, optionally a port, and

@@ -14,7 +14,9 @@
 # client secret is created only when dev.env has none or the client was
 # recreated, and the VAPID keys only when dev.env has none (new keys would
 # invalidate every browser subscription). Needs curl and Go. `make dev`
-# runs it.
+# runs it; deploy/e2e.sh runs it against its own Pocket ID with
+# POCKET_ID_URL, OIDC_SETUP_ENV_FILE and OIDC_SETUP_CALLBACKS
+# (space-separated callback URLs).
 set -euo pipefail
 
 pocket_id="${POCKET_ID_URL:-http://localhost:1411}"
@@ -23,7 +25,10 @@ api_key="brinketask-dev-static-api-key"
 client_id="brinketask-dev"
 # A fixed id keeps the script idempotent without searching.
 user_id="00000000-0000-4000-8000-00000000d001"
-env_file="$(dirname "$0")/dev.env"
+env_file="${OIDC_SETUP_ENV_FILE:-$(dirname "$0")/dev.env}"
+# The callbacks: the app in compose (8080), a server on the host (8081)
+# and the Vite dev server in front of it (5173).
+callbacks="${OIDC_SETUP_CALLBACKS:-http://localhost:8080/auth/callback http://localhost:8081/auth/callback http://localhost:5173/auth/callback}"
 
 # api METHOD PATH [BODY] prints the response body and fails on HTTP errors
 # other than 404, which callers test for with status.
@@ -68,10 +73,12 @@ if [ "$(status "/users/$user_id")" = "404" ]; then
     \"isAdmin\":false}" >/dev/null
 fi
 
-# The callbacks: the app in compose (8080), a server on the host (8081)
-# and the Vite dev server in front of it (5173).
+# As a JSON array: "a" "b" -> ["a","b"].
+# $callbacks is unquoted on purpose: the shell splits it into one argument
+# per URL.
+callback_json="$(printf '"%s",' $callbacks)"
 client_settings="\"name\":\"brinketask (dev)\",
-  \"callbackURLs\":[\"http://localhost:8080/auth/callback\",\"http://localhost:8081/auth/callback\",\"http://localhost:5173/auth/callback\"],
+  \"callbackURLs\":[${callback_json%,}],
   \"isPublic\":false,\"pkceEnabled\":true,\"skipConsent\":true"
 
 new_client=false

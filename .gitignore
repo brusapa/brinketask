@@ -5,6 +5,8 @@
 .env
 *.local
 /deploy/dev.env
+/deploy/brinketask.env
+/deploy/db.env
 
 # Editors and OS
 .idea/

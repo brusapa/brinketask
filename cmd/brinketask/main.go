@@ -25,7 +25,9 @@ import (
 	"github.com/brusapa/brinketask/internal/config"
 	"github.com/brusapa/brinketask/internal/health"
 	"github.com/brusapa/brinketask/internal/httpapi"
+	"github.com/brusapa/brinketask/internal/metrics"
 	"github.com/brusapa/brinketask/internal/notify"
+	"github.com/brusapa/brinketask/internal/purge"
 	"github.com/brusapa/brinketask/internal/session"
 	"github.com/brusapa/brinketask/internal/storage"
 	"github.com/brusapa/brinketask/internal/tasks"
@@ -112,6 +114,10 @@ func run() error {
 	accounts.OnSettingsChanged(taskService.RecomputeUserReminders)
 	sender := webpush.NewSender(cfg.Push.Keys, cfg.Push.Subject, &http.Client{Timeout: 30 * time.Second}, clk)
 	devices := notify.NewDevices(pool, clk, sender, logger)
+	if prefix := cfg.Push.TestEndpointPrefix; prefix != "" {
+		logger.Warn("PUSH_TEST_ENDPOINT_PREFIX is set: for the end-to-end test only, never in production", "prefix", prefix)
+		devices.AllowEndpointPrefix(prefix)
+	}
 	defer devices.Wait()
 	err = httpapi.Register(mux, httpapi.NewServer(accounts, taskService, devices, cfg.Push.Keys.Public), logger,
 		sameOrigin,
@@ -130,23 +136,37 @@ func run() error {
 		return err
 	}
 
-	// The reminder scheduler runs in this process (SPEC section 2) until
-	// shutdown; schedulerDone closes when it has stopped.
+	// The reminder scheduler and the purge run in this process (SPEC
+	// section 2, D-71) until shutdown, which waits for them to stop.
 	scheduler := notify.NewScheduler(pool, clk, taskService, sender, cfg.ReminderMaxLateness, logger)
-	schedulerCtx, stopScheduler := context.WithCancel(ctx)
-	schedulerDone := make(chan struct{})
-	go func() {
-		defer close(schedulerDone)
-		scheduler.Run(schedulerCtx, cfg.SchedulerInterval)
-	}()
-	defer func() {
-		stopScheduler()
-		<-schedulerDone
-	}()
+	purger := purge.New(pool, clk, logger)
+
+	var handler http.Handler = mux
+	if cfg.MetricsListenAddr != "" {
+		// D-72: metrics listen on their own port, which is never published;
+		// the application port does not serve /metrics.
+		m := metrics.New(pool)
+		scheduler.Observe(m)
+		purger.OnResult(func(r purge.Result) { m.PurgeResult(r, clk.Now()) })
+		handler = m.Middleware(mux)
+		metricsMux := http.NewServeMux()
+		metricsMux.Handle("GET /metrics", m.Handler())
+		metricsServer := &http.Server{Addr: cfg.MetricsListenAddr, Handler: metricsMux, ReadHeaderTimeout: 10 * time.Second}
+		go func() {
+			logger.Info("metrics server listening", "addr", cfg.MetricsListenAddr)
+			if err := metricsServer.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+				logger.Error("metrics server", "error", err)
+			}
+		}()
+		defer func() { _ = metricsServer.Close() }()
+	}
+
+	defer background(ctx, func(ctx context.Context) { scheduler.Run(ctx, cfg.SchedulerInterval) })()
+	defer background(ctx, func(ctx context.Context) { purger.Run(ctx, purge.Interval) })()
 
 	server := &http.Server{
 		Addr:              cfg.ListenAddr,
-		Handler:           mux,
+		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
@@ -176,4 +196,20 @@ func run() error {
 		return fmt.Errorf("http server: %w", err)
 	}
 	return nil
+}
+
+// background runs work in a goroutine until ctx ends or the returned stop
+// function is called; stop waits for work to return. Deferred, it makes
+// shutdown wait for background jobs before the database pool closes.
+func background(ctx context.Context, work func(context.Context)) (stop func()) {
+	ctx, cancel := context.WithCancel(ctx)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		work(ctx)
+	}()
+	return func() {
+		cancel()
+		<-done
+	}
 }
