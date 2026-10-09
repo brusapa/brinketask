@@ -36,3 +36,10 @@ createRoot(root).render(
     </Root>
   </StrictMode>,
 );
+
+// The service worker shows reminders (SPEC section 6). It exists only in a
+// build (vite.sw.config.ts), so with the Vite dev server registration fails
+// quietly and notifications are not available.
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+}

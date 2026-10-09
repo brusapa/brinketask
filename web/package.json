@@ -9,8 +9,8 @@
   "scripts": {
     "generate": "openapi-typescript ../api/openapi.yaml --output src/api/schema.gen.ts",
     "dev": "vite",
-    "build": "tsc && vite build",
-    "typecheck": "tsc",
+    "build": "tsc && tsc -p tsconfig.sw.json && vite build && vite build --config vite.sw.config.ts",
+    "typecheck": "tsc && tsc -p tsconfig.sw.json",
     "lint": "eslint . && prettier --check .",
     "format": "prettier --write .",
     "test": "vitest run"

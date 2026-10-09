@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Maskable variant: the platform cuts its own shape, so the colour
+       fills the square and the mark stays in the central 80 % safe zone. -->
+  <rect width="512" height="512" fill="#0F766E"/>
+  <path d="M176 264 l58 58 l114 -126" fill="none" stroke="#FFFFFF" stroke-width="44"
+        stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

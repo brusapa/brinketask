@@ -15,9 +15,17 @@ export default defineConfig(
   {
     languageOptions: {
       parserOptions: {
-        projectService: { allowDefaultProject: ["eslint.config.js"] },
+        projectService: { allowDefaultProject: ["eslint.config.js", "icons/render.mjs"] },
         tsconfigRootDir: import.meta.dirname,
       },
+    },
+  },
+  {
+    // The service worker has its own tsconfig (WebWorker globals); the
+    // project service only finds tsconfig.json.
+    files: ["src/sw/sw.ts"],
+    languageOptions: {
+      parserOptions: { projectService: false, project: ["./tsconfig.sw.json"] },
     },
   },
   reactHooks.configs.flat.recommended,

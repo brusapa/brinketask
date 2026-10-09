@@ -243,5 +243,15 @@
     "onDate": "On a date",
     "times": "Times",
     "lastDate": "Last date"
+  },
+  "notification": {
+    "complete": "Complete",
+    "snooze_one": "Snooze {{count}} min",
+    "snooze_other": "Snooze {{count}} min",
+    "body": "{{list}} · {{due}}",
+    "todayAt": "Today at {{time}}",
+    "dayAt": "{{day}} at {{time}}",
+    "testTitle": "Notifications are on",
+    "testBody": "This device will show your reminders."
   }
 }
