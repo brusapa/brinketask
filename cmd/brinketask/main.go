@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -24,9 +25,11 @@ import (
 	"github.com/brusapa/brinketask/internal/config"
 	"github.com/brusapa/brinketask/internal/health"
 	"github.com/brusapa/brinketask/internal/httpapi"
+	"github.com/brusapa/brinketask/internal/notify"
 	"github.com/brusapa/brinketask/internal/session"
 	"github.com/brusapa/brinketask/internal/storage"
 	"github.com/brusapa/brinketask/internal/tasks"
+	"github.com/brusapa/brinketask/internal/webpush"
 	"github.com/brusapa/brinketask/internal/webui"
 	"github.com/brusapa/brinketask/web"
 )
@@ -35,11 +38,35 @@ import (
 const shutdownTimeout = 10 * time.Second
 
 func main() {
+	// `brinketask vapid-keys` prints a new VAPID key pair and exits (D-68);
+	// without arguments the binary is the server.
+	if len(os.Args) > 1 {
+		if err := command(os.Args[1:]); err != nil {
+			fmt.Fprintln(os.Stderr, "brinketask:", err)
+			os.Exit(2)
+		}
+		return
+	}
 	if err := run(); err != nil {
 		// The logger may not exist yet (configuration errors), so write directly.
 		fmt.Fprintln(os.Stderr, "brinketask:", err)
 		os.Exit(1)
 	}
+}
+
+// command runs a subcommand.
+func command(args []string) error {
+	if len(args) != 1 || args[0] != "vapid-keys" {
+		return fmt.Errorf("unknown command %q; the only one is vapid-keys", strings.Join(args, " "))
+	}
+	public, private, err := webpush.GenerateKeys()
+	if err != nil {
+		return err
+	}
+	// Printed as environment lines, ready for an env file. The private key
+	// goes only to standard output, never to a log.
+	fmt.Printf("VAPID_PUBLIC_KEY=%s\nVAPID_PRIVATE_KEY=%s\n", public, private)
+	return nil
 }
 
 func run() error {
@@ -80,7 +107,13 @@ func run() error {
 	// session that Authenticate resolves.
 	accounts := account.NewService(pool, clk)
 	taskService := tasks.NewService(pool, clk)
-	err = httpapi.Register(mux, httpapi.NewServer(accounts, taskService), logger,
+	// Changing the profile zone or default time recomputes reminders (SPEC
+	// section 6), in the transaction of the change.
+	accounts.OnSettingsChanged(taskService.RecomputeUserReminders)
+	sender := webpush.NewSender(cfg.Push.Keys, cfg.Push.Subject, &http.Client{Timeout: 30 * time.Second}, clk)
+	devices := notify.NewDevices(pool, clk, sender, logger)
+	defer devices.Wait()
+	err = httpapi.Register(mux, httpapi.NewServer(accounts, taskService, devices, cfg.Push.Keys.Public), logger,
 		sameOrigin,
 		httpapi.Authenticate(sessions, logger),
 		httpapi.RateLimit(limiter),
@@ -96,6 +129,20 @@ func run() error {
 	if err := webui.Register(mux, clientFiles, logger); err != nil {
 		return err
 	}
+
+	// The reminder scheduler runs in this process (SPEC section 2) until
+	// shutdown; schedulerDone closes when it has stopped.
+	scheduler := notify.NewScheduler(pool, clk, taskService, sender, cfg.ReminderMaxLateness, logger)
+	schedulerCtx, stopScheduler := context.WithCancel(ctx)
+	schedulerDone := make(chan struct{})
+	go func() {
+		defer close(schedulerDone)
+		scheduler.Run(schedulerCtx, cfg.SchedulerInterval)
+	}()
+	defer func() {
+		stopScheduler()
+		<-schedulerDone
+	}()
 
 	server := &http.Server{
 		Addr:              cfg.ListenAddr,

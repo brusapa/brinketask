@@ -99,6 +99,10 @@ List colour dots use a small fixed palette chosen by the user. One value serves 
 
 A list with no colour shows a dot in the muted text colour.
 
+### App icon
+
+A rounded square in the accent colour (`#0F766E`) with a white check mark, drawn in `web/icons/icon.svg`; the PNG sizes the PWA manifest and iOS need are generated from it (`web/icons/render.mjs`). The maskable variant keeps the mark inside the central 80 % safe zone.
+
 ## 5. Components and metrics
 
 ### Pointer devices

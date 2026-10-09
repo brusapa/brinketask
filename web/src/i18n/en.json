@@ -137,7 +137,8 @@
     "list": "List",
     "tags": "Tags",
     "created": "Created {{date}}",
-    "repeat": "Repeat"
+    "repeat": "Repeat",
+    "reminders": "Reminders"
   },
   "due": {
     "none": "No date",
@@ -172,7 +173,10 @@
     "zone": "Time zone",
     "zoneHelp": "Today, overdue tasks and the Completed section follow this zone.",
     "zoneSaved": "Time zone set to {{zone}}",
-    "logout": "Sign out"
+    "logout": "Sign out",
+    "reminderTime": "Time for all-day reminders",
+    "reminderTimeHelp": "Reminders of tasks without a time are counted from this time of the day.",
+    "reminderTimeSaved": "Reminder time set to {{time}}"
   },
   "zone": {
     "label": "Time zone",
@@ -243,5 +247,57 @@
     "onDate": "On a date",
     "times": "Times",
     "lastDate": "Last date"
+  },
+  "notification": {
+    "complete": "Complete",
+    "snooze_one": "Snooze {{count}} min",
+    "snooze_other": "Snooze {{count}} min",
+    "body": "{{list}} · {{due}}",
+    "todayAt": "Today at {{time}}",
+    "dayAt": "{{day}} at {{time}}",
+    "testTitle": "Notifications are on",
+    "testBody": "This device will show your reminders."
+  },
+  "devices": {
+    "label": "{{browser}} on {{os}}",
+    "unknown": "Unknown browser",
+    "heading": "Notifications",
+    "unsupported": "This browser cannot show notifications.",
+    "blocked": "Notifications are blocked in this browser’s settings. Allow them there to receive reminders.",
+    "off": "Reminders are not shown on this device.",
+    "on": "Reminders are shown on this device.",
+    "turnOn": "Turn on notifications",
+    "turnOff": "Turn off",
+    "list": "Devices",
+    "none": "No device receives reminders yet.",
+    "thisDevice": "This device",
+    "unreachable": "Not reachable",
+    "lastSent": "Last notified {{date}}",
+    "test": "Send a test",
+    "testSent": "Test notification sent",
+    "remove": "Remove",
+    "removeDevice": "Remove {{label}}",
+    "testDevice": "Send a test to {{label}}",
+    "failed": "Notifications could not be turned on."
+  },
+  "reminders": {
+    "add": "Add reminder",
+    "custom": "At a date and time…",
+    "atDue": "At the due time",
+    "onTheDay": "On the day at {{time}}",
+    "minutesBefore_one": "{{count}} minute before",
+    "minutesBefore_other": "{{count}} minutes before",
+    "hoursBefore_one": "{{count}} hour before",
+    "hoursBefore_other": "{{count}} hours before",
+    "daysBefore_one": "{{count}} day before",
+    "daysBefore_other": "{{count}} days before",
+    "at": "{{day}} at {{time}}",
+    "snoozedUntil": "Snoozed until {{when}}",
+    "remove": "Remove reminder: {{reminder}}",
+    "snooze": "Snooze",
+    "in10": "10 minutes",
+    "in60": "1 hour",
+    "tomorrow": "Tomorrow at {{time}}",
+    "pending": "Has a reminder"
   }
 }

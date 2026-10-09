@@ -1,8 +1,7 @@
 // The task detail panel (DESIGN.md section 2): header with the complete
 // box, due date, priority and close; title; description; checklist; the
-// List, Tags and Repeat fields; footer with the creation date, "Skip this
-// occurrence" for recurring tasks, and delete. Reminders arrive in phase 5
-// (D-50).
+// List, Tags, Reminders (with Snooze) and Repeat fields; footer with the
+// creation date, "Skip this occurrence" for recurring tasks, and delete.
 import { ArrowLeft, Flag, SkipForward, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import {
@@ -33,6 +32,7 @@ import { TaskCheckbox } from "../TaskCheckbox";
 import { useRecord } from "../useRecord";
 import { Checklist } from "./Checklist";
 import { DueEditor } from "./DueEditor";
+import { RemindersField } from "./RemindersField";
 import { RepeatEditor } from "./RepeatEditor";
 import { TagsField } from "./TagsField";
 
@@ -150,6 +150,10 @@ function DetailPanel({ task, onClose }: { task: TaskRow; onClose: () => void }) 
           <dt>{t("detail.tags")}</dt>
           <dd>
             <TagsField task={task} />
+          </dd>
+          <dt>{t("detail.reminders")}</dt>
+          <dd>
+            <RemindersField task={task} />
           </dd>
           <dt>{t("detail.repeat")}</dt>
           <dd>

@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import { ApiError } from "../api/client";
 import { FixedClock } from "../lib/clock";
-import { item, list, page, task } from "../test/fixtures";
+import { item, list, page, reminder, task } from "../test/fixtures";
 import { FakeServer, json, networkError, noContent, problem } from "../test/fakeFetch";
 import { Actions } from "./actions";
 import { Replica } from "./replica";
@@ -283,5 +283,48 @@ describe("recurring tasks", () => {
     });
     expect(await actions.skip("p")).toBeUndefined();
     expect(server.calls("POST", "/tasks/p/skip")).toHaveLength(0);
+  });
+});
+
+describe("reminders", () => {
+  test("adding, deleting and snoozing", async () => {
+    const { server, replica, actions } = setup();
+    replica.putTask(task({ id: "t", list_id: "inbox", due_date: "2026-10-10" }));
+    server.on("POST", "/tasks/t/reminders", (r) =>
+      json(
+        reminder({
+          ...(r.body as object),
+          id: (r.body as { id: string }).id,
+          task_id: "t",
+          next_fire_at: "2026-10-10T07:00:00Z",
+        }),
+        201,
+      ),
+    );
+    await actions.addReminder("t", { offsetMinutes: 1440 });
+    const sent = server.calls("POST", "/tasks/t/reminders")[0]?.body as { id: string };
+    expect(sent).toMatchObject({ kind: "relative", offset_minutes: 1440, at: null });
+    expect(replica.getSnapshot().reminders.has(sent.id)).toBe(true);
+
+    server.on("DELETE", `/reminders/${sent.id}`, noContent());
+    await actions.deleteReminder(sent.id);
+    expect(replica.getSnapshot().reminders.size).toBe(0);
+
+    server.on("POST", "/tasks/t/snooze", (r) =>
+      json(
+        reminder({
+          id: (r.body as { reminder_id: string }).reminder_id,
+          task_id: "t",
+          kind: "snooze",
+          offset_minutes: null,
+          at: (r.body as { until: string }).until,
+        }),
+        201,
+      ),
+    );
+    expect(await actions.snooze("t", new Date("2026-10-09T10:10:00Z"))).toBe(true);
+    expect(server.calls("POST", "/tasks/t/snooze")[0]?.body).toMatchObject({
+      until: "2026-10-09T10:10:00.000Z",
+    });
   });
 });

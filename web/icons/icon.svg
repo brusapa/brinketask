@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- The app icon (DESIGN.md, "App icon"): a rounded square in the
+       accent colour with a white check mark. -->
+  <rect width="512" height="512" rx="112" fill="#0F766E"/>
+  <path d="M146 266 l74 74 l146 -160" fill="none" stroke="#FFFFFF" stroke-width="56"
+        stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

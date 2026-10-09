@@ -37,12 +37,19 @@ for _ in $(seq 60); do
   sleep 1
 done
 
+# A throwaway VAPID key pair, made by the image itself (D-68).
+keys="$("$engine" run --rm "$image" vapid-keys)"
+vapid_public="$(sed -n 's/^VAPID_PUBLIC_KEY=//p' <<<"$keys")"
+vapid_private="$(sed -n 's/^VAPID_PRIVATE_KEY=//p' <<<"$keys")"
+
 "$engine" run -d --name "$name-app" --network "$name" \
   --read-only --cap-drop=ALL -p "127.0.0.1:$port:8080" \
   -e DATABASE_URL="postgres://smoke:smoke@$name-db:5432/smoke?sslmode=disable" \
   -e PUBLIC_URL="http://localhost:$port" \
   -e OIDC_ISSUER="http://127.0.0.1:1" \
   -e OIDC_CLIENT_ID=smoke -e OIDC_CLIENT_SECRET=smoke \
+  -e VAPID_PUBLIC_KEY="$vapid_public" -e VAPID_PRIVATE_KEY="$vapid_private" \
+  -e VAPID_SUBJECT=mailto:smoke@example.com \
   "$image" >/dev/null
 
 fail() {

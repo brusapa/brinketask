@@ -7,11 +7,14 @@
 #     callbacks of the app in compose (port 8080) and of a server run on
 #     the host (port 8081) and of the Vite dev server (port 5173; see
 #     CLAUDE.md);
-#   - deploy/dev.env with OIDC_CLIENT_ID and OIDC_CLIENT_SECRET for the app.
+#   - deploy/dev.env with OIDC_CLIENT_ID and OIDC_CLIENT_SECRET for the app,
+#     and a VAPID key pair for Web Push (D-68).
 #
 # Safe to run again: existing user, client and dev.env are kept; a new
-# client secret is created only when dev.env is missing or the client was
-# recreated. Needs curl. `make dev` runs it.
+# client secret is created only when dev.env has none or the client was
+# recreated, and the VAPID keys only when dev.env has none (new keys would
+# invalidate every browser subscription). Needs curl and Go. `make dev`
+# runs it.
 set -euo pipefail
 
 pocket_id="${POCKET_ID_URL:-http://localhost:1411}"
@@ -38,6 +41,16 @@ status() {
 # for Pocket ID's flat responses; avoids depending on jq.
 json_field() {
   sed -n "s/.*\"$1\":\"\([^\"]*\)\".*/\1/p"
+}
+
+# set_var NAME VALUE writes NAME=VALUE into dev.env, replacing an earlier
+# value and keeping the other lines. umask keeps the file readable by its
+# owner only.
+set_var() {
+  (umask 077 && touch "$env_file")
+  local rest
+  rest="$(grep -v "^$1=" "$env_file" || true)"
+  (umask 077 && { [ -n "$rest" ] && printf '%s\n' "$rest"; printf '%s=%s\n' "$1" "$2"; } >"$env_file")
 }
 
 echo "waiting for Pocket ID at $pocket_id"
@@ -71,15 +84,22 @@ else
   api PUT "/oidc/clients/$client_id" "{$client_settings}" >/dev/null
 fi
 
-if [ "$new_client" = true ] || [ ! -s "$env_file" ]; then
+if [ "$new_client" = true ] || ! grep -q "^OIDC_CLIENT_SECRET=" "$env_file" 2>/dev/null; then
   echo "creating a client secret in $env_file"
   secret="$(api POST "/oidc/clients/$client_id/secrets" '{}' | json_field secret)"
   if [ -z "$secret" ]; then
     echo "Pocket ID returned no client secret" >&2
     exit 1
   fi
-  # umask keeps the file readable by its owner only.
-  (umask 077 && printf 'OIDC_CLIENT_ID=%s\nOIDC_CLIENT_SECRET=%s\n' "$client_id" "$secret" >"$env_file")
+  set_var OIDC_CLIENT_ID "$client_id"
+  set_var OIDC_CLIENT_SECRET "$secret"
+fi
+
+if ! grep -q "^VAPID_PRIVATE_KEY=" "$env_file"; then
+  echo "creating a VAPID key pair in $env_file"
+  keys="$(cd "$(dirname "$0")/.." && go run ./cmd/brinketask vapid-keys)"
+  set_var VAPID_PUBLIC_KEY "$(sed -n 's/^VAPID_PUBLIC_KEY=//p' <<<"$keys")"
+  set_var VAPID_PRIVATE_KEY "$(sed -n 's/^VAPID_PRIVATE_KEY=//p' <<<"$keys")"
 fi
 
 token="$(api POST "/users/$user_id/one-time-access-token" '{}' | json_field token)"

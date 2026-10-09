@@ -16,9 +16,8 @@ func wrap(op string, err error) error {
 	}
 	var conflictErr *ConflictError
 	var validationErr *ValidationError
-	var notImplemented *NotImplementedError
 	if errors.Is(err, ErrNotFound) || errors.Is(err, ErrBadCursor) || errors.Is(err, ErrCursorExpired) ||
-		errors.As(err, &conflictErr) || errors.As(err, &validationErr) || errors.As(err, &notImplemented) {
+		errors.As(err, &conflictErr) || errors.As(err, &validationErr) {
 		return err
 	}
 	return fmt.Errorf("tasks: %s: %w", op, err)

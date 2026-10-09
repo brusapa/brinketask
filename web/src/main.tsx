@@ -14,6 +14,7 @@ import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { Root } from "./app/Root";
 import { systemClock } from "./lib/clock";
+import { browserPush } from "./push/browser";
 
 const root = document.getElementById("root");
 if (root === null) {
@@ -27,6 +28,7 @@ createRoot(root).render(
         search: window.location.search,
         clock: systemClock,
         browserZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        push: browserPush(),
         leave: (path) => {
           window.location.assign(path);
         },
@@ -36,3 +38,10 @@ createRoot(root).render(
     </Root>
   </StrictMode>,
 );
+
+// The service worker shows reminders (SPEC section 6). It exists only in a
+// build (vite.sw.config.ts), so with the Vite dev server registration fails
+// quietly and notifications are not available.
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+}

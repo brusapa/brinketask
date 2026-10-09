@@ -5,6 +5,7 @@ import type { components } from "./schema.gen";
 type Schemas = components["schemas"];
 
 export type User = Schemas["User"];
+export type UserPatch = Schemas["UserPatch"];
 export type List = Schemas["List"];
 export type Task = Schemas["Task"];
 export type ChecklistItem = Schemas["ChecklistItem"];
@@ -20,3 +21,5 @@ export type ListCreate = Schemas["ListCreate"];
 export type ListPatch = Schemas["ListPatch"];
 export type TagPatch = Schemas["TagPatch"];
 export type ChecklistItemPatch = Schemas["ChecklistItemPatch"];
+export type Reminder = Schemas["Reminder"];
+export type PushSubscription = Schemas["PushSubscription"];

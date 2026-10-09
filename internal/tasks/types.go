@@ -14,10 +14,12 @@ type List struct {
 	Role string
 }
 
-// Task is a task with its live checklist items, ordered by position.
+// Task is a task with its live checklist items, ordered by position, and
+// its live reminders.
 type Task struct {
 	dbgen.Task
 	ChecklistItems []dbgen.ChecklistItem
+	Reminders      []dbgen.Reminder
 }
 
 // Tag, ChecklistItem and Completion are the rows as they are. "=" makes

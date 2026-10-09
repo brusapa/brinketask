@@ -36,7 +36,7 @@ func (s Server) GetChanges(ctx context.Context, request GetChangesRequestObject)
 		Lists:          make([]List, len(page.Lists)),
 		Tasks:          make([]Task, len(page.Tasks)),
 		ChecklistItems: make([]ChecklistItem, len(page.ChecklistItems)),
-		Reminders:      []Reminder{}, // phase 5
+		Reminders:      make([]Reminder, len(page.Reminders)),
 		Tags:           make([]Tag, len(page.Tags)),
 		NextCursor:     page.NextCursor,
 		HasMore:        page.HasMore,
@@ -51,6 +51,9 @@ func (s Server) GetChanges(ctx context.Context, request GetChangesRequestObject)
 	}
 	for i, c := range page.ChecklistItems {
 		result.ChecklistItems[i] = checklistItemToAPI(c)
+	}
+	for i, r := range page.Reminders {
+		result.Reminders[i] = reminderToAPI(r)
 	}
 	for i, t := range page.Tags {
 		result.Tags[i] = tagToAPI(t)

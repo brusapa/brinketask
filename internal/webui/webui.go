@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io/fs"
 	"log/slog"
+	"mime"
 	"net/http"
 	"path"
 	"strings"
@@ -30,6 +31,14 @@ const (
 	cacheImmutable  = "public, max-age=31536000, immutable"
 	cacheRevalidate = "no-cache"
 )
+
+func init() {
+	// Go's table does not know the manifest of an installable web app;
+	// browsers want this type for it.
+	if err := mime.AddExtensionType(".webmanifest", "application/manifest+json"); err != nil {
+		panic(err)
+	}
+}
 
 // assetsDir is where Vite writes the hashed files.
 const assetsDir = "assets/"

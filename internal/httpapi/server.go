@@ -9,6 +9,7 @@ import (
 	"net/http"
 
 	"github.com/brusapa/brinketask/internal/httpapi/contract"
+	"github.com/brusapa/brinketask/internal/notify"
 	"github.com/brusapa/brinketask/internal/tasks"
 )
 
@@ -21,11 +22,15 @@ const BaseURL = "/api/v1"
 type Server struct {
 	accounts Accounts
 	tasks    *tasks.Service
+	devices  *notify.Devices
+	// vapidPublicKey is what browsers need to subscribe (GET
+	// /push/vapid-public-key).
+	vapidPublicKey string
 }
 
 // NewServer returns the API implementation.
-func NewServer(accounts Accounts, taskService *tasks.Service) Server {
-	return Server{accounts: accounts, tasks: taskService}
+func NewServer(accounts Accounts, taskService *tasks.Service, devices *notify.Devices, vapidPublicKey string) Server {
+	return Server{accounts: accounts, tasks: taskService, devices: devices, vapidPublicKey: vapidPublicKey}
 }
 
 // This line does not run anything; it makes compilation fail if Server stops

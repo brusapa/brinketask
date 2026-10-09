@@ -208,3 +208,12 @@ export function completedScope(
       return null;
   }
 }
+
+/** The tasks with a reminder still to fire (DESIGN.md section 5, item 5). */
+export function tasksWithPendingReminders(snapshot: Snapshot): ReadonlySet<string> {
+  const result = new Set<string>();
+  for (const reminder of snapshot.reminders.values()) {
+    if (reminder.next_fire_at) result.add(reminder.task_id);
+  }
+  return result;
+}

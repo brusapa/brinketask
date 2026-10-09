@@ -15,6 +15,8 @@ var testFiles = fstest.MapFS{
 	"assets/index-abc123.js":  {Data: []byte("console.log(1)")},
 	"assets/font-def456.woff": {Data: []byte("font")},
 	"robots.txt":              {Data: []byte("User-agent: *")},
+	"manifest.webmanifest":    {Data: []byte("{}")},
+	"sw.js":                   {Data: []byte("self.addEventListener")},
 }
 
 func serve(t *testing.T, h http.Handler, method, target string) *httptest.ResponseRecorder {
@@ -150,5 +152,23 @@ func TestWithoutTheClient(t *testing.T) {
 	}
 	if _, err := Handler(fstest.MapFS{}); err == nil {
 		t.Error("Handler accepted files without index.html")
+	}
+}
+
+// The service worker and the manifest are served from the root, with types
+// browsers accept, and revalidated: their URLs never change.
+func TestServiceWorkerAndManifest(t *testing.T) {
+	h := newHandler(t)
+	for target, wantType := range map[string]string{
+		"/sw.js":                "text/javascript",
+		"/manifest.webmanifest": "application/manifest+json",
+	} {
+		rec := serve(t, h, http.MethodGet, target)
+		if rec.Code != http.StatusOK || !strings.HasPrefix(rec.Header().Get("Content-Type"), wantType) {
+			t.Errorf("%s: status %d, type %q", target, rec.Code, rec.Header().Get("Content-Type"))
+		}
+		if rec.Header().Get("Cache-Control") != cacheRevalidate {
+			t.Errorf("%s: Cache-Control %q", target, rec.Header().Get("Cache-Control"))
+		}
 	}
 }

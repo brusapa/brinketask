@@ -767,7 +767,10 @@ textarea.input {
   margin-bottom: 12px;
 }
 
-.field > label {
+/* React Aria renders some labels as spans (time and date fields, radio
+   groups); its default class names them all. */
+.field > label,
+.field > .react-aria-Label {
   font-size: 12px;
   font-weight: 600;
   color: var(--color-text-muted);
@@ -1507,4 +1510,70 @@ textarea.input {
   font-size: 12px;
   font-weight: 600;
   color: var(--color-text-muted);
+}
+
+/* ---- Devices (settings) ------------------------------------------------ */
+
+.device-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.device {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.device-label {
+  display: inline-flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+}
+
+.device .view-note {
+  margin: 0;
+}
+
+/* ---- Reminders (detail) -------------------------------------------------- */
+
+.reminders-field {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 6px 0;
+}
+
+.reminder-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.reminder {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+/* Nothing pending: past, or the task is done. */
+.reminder-idle {
+  color: var(--color-text-muted);
+  text-decoration: line-through;
+}
+
+.reminder-actions {
+  display: flex;
+  gap: 16px;
 }

@@ -60,7 +60,8 @@ Tool versions: Go 1.27.1, golangci-lint v2.14.0, Node 24.21.0 (`web/.node-versio
 | `make all` | lint, test and build: run before calling anything done |
 | `make image` | Builds the application image `localhost/brinketask:dev` from `deploy/Dockerfile` with Podman |
 | `make dev` / `make dev-down` | Starts / stops PostgreSQL, a Pocket ID on `http://localhost:1411` and the app on `http://localhost:8080` (`deploy/compose.dev.yaml`). Needs a compose provider for `podman compose` (podman-compose or docker-compose) |
-| `deploy/dev-oidc-setup.sh` | Run by `make dev`: creates the Pocket ID user `dev` and the OIDC client `brinketask-dev`, writes the client secret to the git-ignored `deploy/dev.env`, and prints a single-use login link that needs no passkey. Idempotent; run it again for a new link |
+| `go run ./cmd/brinketask vapid-keys` | Prints a new VAPID key pair for Web Push (D-68) |
+| `deploy/dev-oidc-setup.sh` | Run by `make dev`: creates the Pocket ID user `dev` and the OIDC client `brinketask-dev`, writes the client secret and a VAPID key pair (kept across runs) to the git-ignored `deploy/dev.env`, and prints a single-use login link that needs no passkey. Idempotent; run it again for a new link |
 | `deploy/smoke-test.sh` | Runs the built image read-only next to PostgreSQL and checks `GET /healthz` = 200, `GET /api/v1/me` = 401, that `/auth/login` is served and that the web client is served with its CSP (CI runs it after `make image`) |
 
 Integration tests start a throwaway PostgreSQL (`internal/testdb`) through testcontainers, which needs a Docker-compatible API. Tests that need the schema call `storagetest.NewPool`: one container per test package, and a fresh database cloned from a migrated template per test (the package needs `func TestMain(m *testing.M) { storagetest.Main(m) }`). With Podman:
@@ -76,13 +77,14 @@ To run the server on the host instead of in a container, start only the database
 ```sh
 podman compose -f deploy/compose.dev.yaml up -d db pocket-id
 deploy/dev-oidc-setup.sh            # prints the login link
-set -a; . deploy/dev.env; set +a    # OIDC_CLIENT_ID, OIDC_CLIENT_SECRET
+set -a; . deploy/dev.env; set +a    # OIDC client and VAPID keys
 export DATABASE_URL='postgres://brinketask:brinketask@127.0.0.1:5432/brinketask?sslmode=disable'
 export LISTEN_ADDR=127.0.0.1:8081 PUBLIC_URL=http://localhost:8081 OIDC_ISSUER=http://localhost:1411
+export VAPID_SUBJECT=mailto:dev@example.com
 go run ./cmd/brinketask
 ```
 
-To work on the web client with hot reload, run the server on the host as above but with `PUBLIC_URL=http://localhost:5173`, then `cd web && npm run dev`. The Vite dev server on port 5173 serves the client and forwards `/api` and `/auth` to the server on 8081, so the browser still sees one origin. Open `http://localhost:5173`.
+To work on the web client with hot reload, run the server on the host as above but with `PUBLIC_URL=http://localhost:5173`, then `cd web && npm run dev`. The Vite dev server on port 5173 serves the client and forwards `/api` and `/auth` to the server on 8081, so the browser still sees one origin. Open `http://localhost:5173`. The service worker, and with it notifications, exists only in a build (`make build`, or the app in compose): the Vite dev server does not serve `/sw.js`.
 
 To log in, open the link the setup script printed (it signs you in to Pocket ID as `dev`), then `/auth/login` on the app (`http://localhost:8080` in compose, `http://localhost:8081` on the host, `http://localhost:5173` with Vite). Use `localhost`, not `127.0.0.1`: the cookies and the OIDC callback are bound to the `PUBLIC_URL` origin.
 

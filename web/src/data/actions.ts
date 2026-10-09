@@ -396,6 +396,60 @@ export class Actions {
     );
   }
 
+  // Reminders ----------------------------------------------------------------
+
+  /**
+   * Adds a reminder: relative to the due date (minutes before it) or at an
+   * instant. The server computes when it fires (SPEC section 6).
+   */
+  async addReminder(
+    taskId: string,
+    reminder: { offsetMinutes: number } | { at: Date },
+  ): Promise<void> {
+    const body =
+      "offsetMinutes" in reminder
+        ? {
+            id: uuidv7(this.o.clock),
+            kind: "relative" as const,
+            offset_minutes: reminder.offsetMinutes,
+            at: null,
+          }
+        : {
+            id: uuidv7(this.o.clock),
+            kind: "absolute" as const,
+            at: reminder.at.toISOString(),
+            offset_minutes: null,
+          };
+    const result = await this.attempt(() =>
+      unwrap(() =>
+        this.api.POST("/tasks/{id}/reminders", { params: { path: { id: taskId } }, body }),
+      ),
+    );
+    if (result.ok) this.replica.putReminder(result.value);
+  }
+
+  async deleteReminder(id: string): Promise<void> {
+    const before = this.replica.getSnapshot().reminders.get(id);
+    if (!before) return;
+    this.replica.remove("reminders", [id]);
+    await this.attempt(
+      () => unwrap(() => this.api.DELETE("/reminders/{id}", { params: { path: { id } } })),
+      () => {
+        this.replica.setLocally("reminders", before);
+      },
+    );
+  }
+
+  /** Reminds again at until (D-32); idempotent on the generated id. */
+  async snooze(taskId: string, until: Date): Promise<boolean> {
+    const body = { reminder_id: uuidv7(this.o.clock), until: until.toISOString() };
+    const result = await this.attempt(() =>
+      unwrap(() => this.api.POST("/tasks/{id}/snooze", { params: { path: { id: taskId } }, body })),
+    );
+    if (result.ok) this.replica.putReminder(result.value);
+    return result.ok;
+  }
+
   /** The task as the replica has it now. */
   currentTask(id: string): TaskRow | undefined {
     return this.replica.getSnapshot().tasks.get(id);

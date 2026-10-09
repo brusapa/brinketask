@@ -57,3 +57,53 @@ func ValidateZone(name string) error {
 	}
 	return nil
 }
+
+// Instant is the moment a wall-clock time happens on a calendar date in a
+// zone. Daylight saving changes make some wall-clock times ambiguous, and
+// it resolves them as RFC 5545 and the web client do ("compatible"):
+//   - a time skipped by the spring change (02:30 on the last Sunday of
+//     March in Madrid) moves forward by the gap: 03:30;
+//   - a time that happens twice in autumn takes the first one.
+//
+// date is a calendar date at midnight UTC; minutes counts from midnight.
+// Go's time.Date leaves both cases unspecified, so the offsets on either
+// side are tried explicitly.
+func Instant(date time.Time, minutes int, zone *time.Location) time.Time {
+	// The wall-clock time read as if it were UTC.
+	wall := time.Date(date.Year(), date.Month(), date.Day(), 0, minutes, 0, 0, time.UTC)
+	// A day before and after are on either side of any change.
+	_, before := wall.Add(-24 * time.Hour).In(zone).Zone()
+	_, after := wall.Add(24 * time.Hour).In(zone).Zone()
+
+	early := wall.Add(-time.Duration(before) * time.Second)
+	late := wall.Add(-time.Duration(after) * time.Second)
+	earlyOK := sameWallClock(early, wall, zone)
+	lateOK := sameWallClock(late, wall, zone)
+	switch {
+	case earlyOK && lateOK:
+		// An autumn overlap, or no change at all (both equal): the first.
+		if late.Before(early) {
+			return late
+		}
+		return early
+	case earlyOK:
+		return early
+	case lateOK:
+		return late
+	default:
+		// A spring gap: read with the offset in force before the change,
+		// which lands as far after the gap as the time was into it.
+		return early
+	}
+}
+
+func sameWallClock(instant, wall time.Time, zone *time.Location) bool {
+	local := instant.In(zone)
+	return local.Year() == wall.Year() && local.Month() == wall.Month() && local.Day() == wall.Day() &&
+		local.Hour() == wall.Hour() && local.Minute() == wall.Minute()
+}
+
+// Minutes returns a PostgreSQL time of day as minutes from midnight.
+func Minutes(t pgtype.Time) int {
+	return int(t.Microseconds / int64(time.Minute/time.Microsecond))
+}

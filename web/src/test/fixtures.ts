@@ -1,5 +1,5 @@
 // Builders of API resources for tests, with valid defaults.
-import type { ChangesPage, ChecklistItem, List, Tag, Task } from "../api/types";
+import type { ChangesPage, ChecklistItem, List, Reminder, Tag, Task } from "../api/types";
 
 const timestamp = "2026-10-01T10:00:00Z";
 
@@ -84,4 +84,18 @@ export function page(fields: Partial<ChangesPage> = {}): ChangesPage {
 /** A stored copy of a resource, marked deleted. */
 export function tombstone<T extends { version: number }>(resource: T): T {
   return { ...resource, version: resource.version + 1, deleted_at: timestamp };
+}
+
+export function reminder(fields: Partial<Reminder> & { id: string; task_id: string }): Reminder {
+  return {
+    kind: "relative",
+    offset_minutes: 0,
+    at: null,
+    next_fire_at: null,
+    version: 1,
+    created_at: timestamp,
+    updated_at: timestamp,
+    deleted_at: null,
+    ...fields,
+  };
 }

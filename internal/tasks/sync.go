@@ -14,6 +14,7 @@ type ChangesPage struct {
 	Lists          []List
 	Tasks          []dbgen.Task
 	ChecklistItems []ChecklistItem
+	Reminders      []Reminder
 	Tags           []Tag
 	// NextCursor resumes after this page; it is returned also when HasMore
 	// is false, so the client can ask for later changes.
@@ -96,6 +97,9 @@ func (s *Service) Changes(ctx context.Context, userID uuid.UUID, cursor *string,
 			return err
 		}
 		if page.ChecklistItems, err = q.SyncChecklistItems(ctx, dbgen.SyncChecklistItemsParams{UserID: userID, After: lower, Upper: upperBound, LiveOnly: liveOnly}); err != nil {
+			return err
+		}
+		if page.Reminders, err = q.SyncReminders(ctx, dbgen.SyncRemindersParams{UserID: userID, After: lower, Upper: upperBound, LiveOnly: liveOnly}); err != nil {
 			return err
 		}
 		if page.Tags, err = q.SyncTags(ctx, dbgen.SyncTagsParams{UserID: userID, After: lower, Upper: upperBound, LiveOnly: liveOnly}); err != nil {

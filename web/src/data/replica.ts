@@ -4,7 +4,7 @@
 //
 // The replica is an immutable snapshot replaced on every change, so React
 // can tell what changed by comparing references (useSyncExternalStore).
-import type { ChangesPage, ChecklistItem, List, Tag, Task } from "../api/types";
+import type { ChangesPage, ChecklistItem, List, Reminder, Tag, Task } from "../api/types";
 
 /** A task as the replica keeps it: its children live in their own maps. */
 export type TaskRow = Omit<Task, "checklist_items" | "reminders">;
@@ -13,6 +13,7 @@ export interface Snapshot {
   readonly lists: ReadonlyMap<string, List>;
   readonly tasks: ReadonlyMap<string, TaskRow>;
   readonly items: ReadonlyMap<string, ChecklistItem>;
+  readonly reminders: ReadonlyMap<string, Reminder>;
   readonly tags: ReadonlyMap<string, Tag>;
 }
 
@@ -23,6 +24,7 @@ export interface ValueOf {
   lists: List;
   tasks: TaskRow;
   items: ChecklistItem;
+  reminders: Reminder;
   tags: Tag;
 }
 
@@ -41,6 +43,7 @@ export class Replica {
     lists: new Map(),
     tasks: new Map(),
     items: new Map(),
+    reminders: new Map(),
     tags: new Map(),
   };
   private listeners = new Set<() => void>();
@@ -71,6 +74,7 @@ export class Replica {
       draft.lists.clear();
       draft.tasks.clear();
       draft.items.clear();
+      draft.reminders.clear();
       draft.tags.clear();
       for (const page of pages) {
         this.applyPage(draft, page);
@@ -90,6 +94,12 @@ export class Replica {
   putList(list: List): void {
     this.update((draft) => {
       this.put(draft.lists, list);
+    });
+  }
+
+  putReminder(reminder: Reminder): void {
+    this.update((draft) => {
+      this.put(draft.reminders, reminder);
     });
   }
 
@@ -144,16 +154,20 @@ export class Replica {
     for (const list of page.lists) this.put(draft.lists, list);
     for (const task of page.tasks) this.putTaskInto(draft, task);
     for (const item of page.checklist_items) this.put(draft.items, item);
+    for (const reminder of page.reminders) this.put(draft.reminders, reminder);
     for (const tag of page.tags) this.put(draft.tags, tag);
   }
 
   private putTaskInto(draft: Draft, task: Task): void {
     // Destructuring with a rest element: `row` is the task without the two
-    // child arrays.
+    // child arrays, which go to their own maps.
     const { checklist_items: items, reminders, ...row } = task;
     this.put(draft.tasks, row);
     for (const item of items ?? []) {
       this.put(draft.items, item);
+    }
+    for (const reminder of reminders ?? []) {
+      this.put(draft.reminders, reminder);
     }
   }
 
@@ -189,6 +203,7 @@ export class Replica {
       lists: new Map(this.snapshot.lists),
       tasks: new Map(this.snapshot.tasks),
       items: new Map(this.snapshot.items),
+      reminders: new Map(this.snapshot.reminders),
       tags: new Map(this.snapshot.tags),
     };
     change(draft);

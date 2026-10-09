@@ -8,6 +8,7 @@ import type { ChangesPage, User } from "../api/types";
 import { AppRoutes } from "../App";
 import { Root } from "../app/Root";
 import { FixedClock } from "../lib/clock";
+import { FakePush } from "./fakePush";
 import { FakeServer, json, origin } from "./fakeFetch";
 import { list, page } from "./fixtures";
 
@@ -32,6 +33,7 @@ export interface Rendered {
   clock: FixedClock;
   left: string[];
   user: ReturnType<typeof userEvent.setup>;
+  push: FakePush;
 }
 
 export async function renderApp(
@@ -41,6 +43,7 @@ export async function renderApp(
     server?: FakeServer;
     search?: string;
     browserZone?: string;
+    push?: FakePush;
     /** Adds routes before the app starts. */
     setup?: (server: FakeServer) => void;
   } = {},
@@ -57,6 +60,7 @@ export async function renderApp(
   }
   options.setup?.(server);
   const clock = new FixedClock(testNow);
+  const push = options.push ?? new FakePush();
   const left: string[] = [];
   const user = userEvent.setup();
   render(
@@ -66,6 +70,7 @@ export async function renderApp(
         search: options.search ?? "",
         clock,
         browserZone: options.browserZone ?? "Europe/Madrid",
+        push,
         fetch: (request) => server.handleRequest(request),
         leave: (path) => left.push(path),
       }}
@@ -79,5 +84,5 @@ export async function renderApp(
     // Wait for the first screen after /me and the first sync.
     await screen.findByRole("navigation", {}, { timeout: 3000 }).catch(() => undefined);
   }
-  return { server, clock, left, user };
+  return { server, clock, left, user, push };
 }

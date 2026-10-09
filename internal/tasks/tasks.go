@@ -31,9 +31,7 @@ type NewTask struct {
 	RepeatFrom  string
 	TagIDs      []uuid.UUID
 	Checklist   []NewChecklistItem
-	// HasReminders is set when the request carries reminders, which arrive
-	// in phase 5 (D-34).
-	HasReminders bool
+	Reminders   []NewReminder
 }
 
 // NewChecklistItem is a checklist item to create.
@@ -99,8 +97,8 @@ func (s *Service) CreateTask(ctx context.Context, userID uuid.UUID, in NewTask) 
 			if taken {
 				return conflict("the id belongs to another user's task")
 			}
-			if in.HasReminders {
-				return &NotImplementedError{Feature: "reminders"}
+			if len(in.Reminders) > MaxReminders {
+				return errTooManyReminders
 			}
 
 			// Lock order: the target list and the tags before any task
@@ -179,6 +177,17 @@ func (s *Service) CreateTask(ctx context.Context, userID uuid.UUID, in NewTask) 
 			row, err := q.GetTaskForUser(ctx, dbgen.GetTaskForUserParams{UserID: userID, ID: in.ID})
 			if err != nil {
 				return err
+			}
+			for i, r := range in.Reminders {
+				if _, found, err := s.existingReminder(ctx, q, userID, r.ID); err != nil || found {
+					if found {
+						err = conflict("a reminder id is already in use")
+					}
+					return err
+				}
+				if _, err := s.insertReminder(ctx, q, userID, row, r, ""); err != nil {
+					return prefixFields(err, fmt.Sprintf("/reminders/%d", i))
+				}
 			}
 			task, err = withChecklist(ctx, q, row)
 			created = true
@@ -289,6 +298,10 @@ func (s *Service) PatchTask(ctx context.Context, userID, id uuid.UUID, patch Tas
 		if err := s.writeTask(ctx, q, &updated); err != nil {
 			return err
 		}
+		// Due fields, status or rule may have changed (SPEC section 6).
+		if err := s.recompute(ctx, q, userID, updated, false); err != nil {
+			return err
+		}
 		task, err = withChecklist(ctx, q, updated)
 		return err
 	})
@@ -315,7 +328,11 @@ func (s *Service) DeleteTask(ctx context.Context, userID, id uuid.UUID) error {
 		}
 		now := s.now()
 		current.DeletedAt = &now
-		return s.writeTask(ctx, q, &current)
+		if err := s.writeTask(ctx, q, &current); err != nil {
+			return err
+		}
+		// D-67: the reminders stay, with nothing pending.
+		return s.recompute(ctx, q, userID, current, false)
 	})
 	return wrap("delete task", err)
 }
@@ -353,6 +370,9 @@ func (s *Service) RestoreTask(ctx context.Context, userID, id uuid.UUID) (Task, 
 		}
 		current.DeletedAt = nil
 		if err := s.writeTask(ctx, q, &current); err != nil {
+			return err
+		}
+		if err := s.recompute(ctx, q, userID, current, false); err != nil {
 			return err
 		}
 		task, err = withChecklist(ctx, q, current)
@@ -485,17 +505,30 @@ func withChecklists(ctx context.Context, q *dbgen.Queries, rows []dbgen.Task) ([
 	if err != nil {
 		return nil, err
 	}
+	reminders, err := q.LiveRemindersForTasks(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
 	byTask := map[uuid.UUID][]dbgen.ChecklistItem{}
 	for _, item := range items {
 		byTask[item.TaskID] = append(byTask[item.TaskID], item)
 	}
+	remindersByTask := map[uuid.UUID][]dbgen.Reminder{}
+	for _, r := range reminders {
+		remindersByTask[r.TaskID] = append(remindersByTask[r.TaskID], r)
+	}
 	tasks := make([]Task, len(rows))
 	for i, row := range rows {
+		// Empty JSON arrays, not null.
 		checklist := byTask[row.ID]
 		if checklist == nil {
-			checklist = []dbgen.ChecklistItem{} // an empty JSON array, not null
+			checklist = []dbgen.ChecklistItem{}
 		}
-		tasks[i] = Task{Task: row, ChecklistItems: checklist}
+		taskReminders := remindersByTask[row.ID]
+		if taskReminders == nil {
+			taskReminders = []dbgen.Reminder{}
+		}
+		tasks[i] = Task{Task: row, ChecklistItems: checklist, Reminders: taskReminders}
 	}
 	return tasks, nil
 }

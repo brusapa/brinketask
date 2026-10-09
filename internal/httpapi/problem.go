@@ -55,7 +55,3 @@ type problemResponse struct {
 func toResponse(problem Problem) problemResponse {
 	return problemResponse{Body: problem, StatusCode: problem.Status}
 }
-
-func notImplemented() problemResponse {
-	return toResponse(newProblem(http.StatusNotImplemented, ProblemCodeNotImplemented, ""))
-}

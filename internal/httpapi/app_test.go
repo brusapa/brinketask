@@ -13,9 +13,12 @@ import (
 
 	"github.com/brusapa/brinketask/internal/account"
 	"github.com/brusapa/brinketask/internal/clock"
+	"github.com/brusapa/brinketask/internal/notify"
 	"github.com/brusapa/brinketask/internal/session"
 	"github.com/brusapa/brinketask/internal/storage/storagetest"
 	"github.com/brusapa/brinketask/internal/tasks"
+	"github.com/brusapa/brinketask/internal/webpush"
+	"github.com/brusapa/brinketask/internal/webpush/webpushtest"
 )
 
 const testOrigin = "https://tasks.example.com"
@@ -30,7 +33,10 @@ type testApp struct {
 	accounts *account.Service
 	tasks    *tasks.Service
 	sessions *session.Manager
-	mux      *http.ServeMux
+	devices  *notify.Devices
+	// push is a fake push service: what devices receive (webpushtest).
+	push *webpushtest.Service
+	mux  *http.ServeMux
 }
 
 func newTestApp(t *testing.T) *testApp {
@@ -39,6 +45,9 @@ func newTestApp(t *testing.T) *testApp {
 	clk := clock.NewFixed(testStart)
 	accounts := account.NewService(pool, clk)
 	taskService := tasks.NewService(pool, clk)
+	// Changing the profile zone or default time recomputes reminders (SPEC
+	// section 6), in the transaction of the change.
+	accounts.OnSettingsChanged(taskService.RecomputeUserReminders)
 	// Sessions outlive the 30-day restore window that some tests step over;
 	// expiry has its own tests in package session.
 	sessions := session.NewManager(pool, clk, 365*24*time.Hour, 365*24*time.Hour)
@@ -46,8 +55,22 @@ func newTestApp(t *testing.T) *testApp {
 	if err != nil {
 		t.Fatal(err)
 	}
+	public, private, err := webpush.GenerateKeys()
+	if err != nil {
+		t.Fatal(err)
+	}
+	keys, err := webpush.ParseKeys(public, private)
+	if err != nil {
+		t.Fatal(err)
+	}
+	push := webpushtest.New(t, public)
+	sender := webpush.NewSender(keys, "mailto:test@example.com", http.DefaultClient, clk)
+	devices := notify.NewDevices(pool, clk, sender, discardLogger)
+	devices.AllowLocalEndpoints()
+	t.Cleanup(devices.Wait)
+
 	mux := http.NewServeMux()
-	err = Register(mux, NewServer(accounts, taskService), discardLogger,
+	err = Register(mux, NewServer(accounts, taskService, devices, public), discardLogger,
 		sameOrigin,
 		Authenticate(sessions, discardLogger),
 		// High enough that no test hits it; the limit has its own test.
@@ -56,7 +79,10 @@ func newTestApp(t *testing.T) *testApp {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &testApp{pool: pool, clock: clk, accounts: accounts, tasks: taskService, sessions: sessions, mux: mux}
+	return &testApp{
+		pool: pool, clock: clk, accounts: accounts, tasks: taskService, sessions: sessions,
+		devices: devices, push: push, mux: mux,
+	}
 }
 
 // user is a signed-up user with a session.

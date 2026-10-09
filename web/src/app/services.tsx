@@ -11,6 +11,7 @@ import { Replica, type Snapshot } from "../data/replica";
 import { Syncer } from "../data/sync";
 import type { Clock } from "../lib/clock";
 import { msUntilNextDay } from "../lib/dates";
+import type { PushEnvironment } from "../push/browser";
 import { ToastStore } from "./toasts";
 
 export interface Services {
@@ -27,6 +28,8 @@ export interface Services {
   browserZone: string;
   /** Ends the session (POST /auth/logout) and shows the signed-out page. */
   logout: () => Promise<void>;
+  /** The browser's push APIs (a fake in tests). */
+  push: PushEnvironment;
 }
 
 /** The profile, kept outside React so Actions can read the zone. */
@@ -60,6 +63,7 @@ export function createServices(options: {
   user: User;
   browserZone: string;
   logout: () => Promise<void>;
+  push: PushEnvironment;
   onError: (error: unknown, toasts: ToastStore) => void;
 }): Services {
   const replica = new Replica();
@@ -97,6 +101,7 @@ export function createServices(options: {
     profile,
     browserZone: options.browserZone,
     logout: options.logout,
+    push: options.push,
   };
 }
 

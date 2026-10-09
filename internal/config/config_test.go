@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/brusapa/brinketask/internal/webpush"
 )
 
 // env returns a LookupFunc backed by a map, standing in for the process environment.
@@ -18,6 +20,15 @@ func env(vars map[string]string) LookupFunc {
 	}
 }
 
+// A VAPID key pair made once for the package's tests.
+var testPublicKey, testPrivateKey = func() (string, string) {
+	public, private, err := webpush.GenerateKeys()
+	if err != nil {
+		panic(err)
+	}
+	return public, private
+}()
+
 // required returns the smallest valid environment, plus overrides. An
 // override with the value "<unset>" removes the variable.
 func required(overrides map[string]string) map[string]string {
@@ -27,6 +38,9 @@ func required(overrides map[string]string) map[string]string {
 		"OIDC_ISSUER":        "https://id.example.com",
 		"OIDC_CLIENT_ID":     "brinketask",
 		"OIDC_CLIENT_SECRET": "client-secret-for-tests",
+		"VAPID_PUBLIC_KEY":   testPublicKey,
+		"VAPID_PRIVATE_KEY":  testPrivateKey,
+		"VAPID_SUBJECT":      "mailto:ops@example.com",
 	}
 	maps.Copy(vars, overrides)
 	for name, value := range vars {
@@ -74,14 +88,23 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.SessionMaxAge != 720*time.Hour {
 		t.Errorf("SessionMaxAge = %v, want 720h", cfg.SessionMaxAge)
 	}
+	// D-29: polls every 15 s; 12 h of lateness at most.
+	if cfg.SchedulerInterval != 15*time.Second || cfg.ReminderMaxLateness != 12*time.Hour {
+		t.Errorf("scheduler %v, lateness %v", cfg.SchedulerInterval, cfg.ReminderMaxLateness)
+	}
+	if cfg.Push.Keys.Public != testPublicKey || cfg.Push.Subject != "mailto:ops@example.com" {
+		t.Errorf("Push = %+v", cfg.Push)
+	}
 }
 
 func TestLoadOverrides(t *testing.T) {
 	cfg, err := Load(env(required(map[string]string{
-		"LISTEN_ADDR":          "127.0.0.1:9000",
-		"LOG_LEVEL":            "debug",
-		"SESSION_IDLE_TIMEOUT": "90m",
-		"SESSION_MAX_AGE":      "48h",
+		"LISTEN_ADDR":           "127.0.0.1:9000",
+		"LOG_LEVEL":             "debug",
+		"SESSION_IDLE_TIMEOUT":  "90m",
+		"SESSION_MAX_AGE":       "48h",
+		"SCHEDULER_INTERVAL":    "5s",
+		"REMINDER_MAX_LATENESS": "1h",
 	})))
 	if err != nil {
 		t.Fatalf("Load: %v", err)
@@ -98,6 +121,9 @@ func TestLoadOverrides(t *testing.T) {
 	if cfg.SessionMaxAge != 48*time.Hour {
 		t.Errorf("SessionMaxAge = %v, want 48h", cfg.SessionMaxAge)
 	}
+	if cfg.SchedulerInterval != 5*time.Second || cfg.ReminderMaxLateness != time.Hour {
+		t.Errorf("scheduler %v, lateness %v", cfg.SchedulerInterval, cfg.ReminderMaxLateness)
+	}
 }
 
 // Every secret of SPEC section 10 that this phase reads accepts _FILE.
@@ -111,6 +137,8 @@ func TestLoadSecretsFromFiles(t *testing.T) {
 		"OIDC_CLIENT_ID_FILE":     writeFile(t, "id-from-file\n"),
 		"OIDC_CLIENT_SECRET":      "<unset>",
 		"OIDC_CLIENT_SECRET_FILE": writeFile(t, "secret-from-file\r\n"),
+		"VAPID_PRIVATE_KEY":       "<unset>",
+		"VAPID_PRIVATE_KEY_FILE":  writeFile(t, testPrivateKey+"\n"),
 	})))
 	if err != nil {
 		t.Fatalf("Load: %v", err)
@@ -123,6 +151,9 @@ func TestLoadSecretsFromFiles(t *testing.T) {
 	}
 	if cfg.OIDC.ClientSecret != "secret-from-file" {
 		t.Errorf("ClientSecret = %q", cfg.OIDC.ClientSecret)
+	}
+	if cfg.Push.Keys.Public != testPublicKey {
+		t.Errorf("VAPID keys from file not read")
 	}
 }
 
@@ -235,6 +266,31 @@ func TestLoadErrors(t *testing.T) {
 			wantErr: "SESSION_IDLE_TIMEOUT",
 		},
 		{
+			name:    "VAPID public key missing",
+			vars:    required(map[string]string{"VAPID_PUBLIC_KEY": "<unset>"}),
+			wantErr: "VAPID_PUBLIC_KEY is required",
+		},
+		{
+			name:    "VAPID private key missing",
+			vars:    required(map[string]string{"VAPID_PRIVATE_KEY": "<unset>"}),
+			wantErr: "VAPID_PRIVATE_KEY or VAPID_PRIVATE_KEY_FILE is required",
+		},
+		{
+			name:    "VAPID keys of different pairs",
+			vars:    required(map[string]string{"VAPID_PUBLIC_KEY": otherPublicKey()}),
+			wantErr: "VAPID keys: webpush: the public key does not match",
+		},
+		{
+			name:    "VAPID subject not a URL",
+			vars:    required(map[string]string{"VAPID_SUBJECT": "ops@example.com"}),
+			wantErr: "VAPID_SUBJECT must be a mailto: or https: URL",
+		},
+		{
+			name:    "scheduler interval not a duration",
+			vars:    required(map[string]string{"SCHEDULER_INTERVAL": "often"}),
+			wantErr: "SCHEDULER_INTERVAL",
+		},
+		{
 			name:    "max age not positive",
 			vars:    required(map[string]string{"SESSION_MAX_AGE": "0s"}),
 			wantErr: "SESSION_MAX_AGE: must be positive",
@@ -261,5 +317,21 @@ func TestLoadErrorsDoNotLeakSecrets(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), "client-secret-for-tests") {
 		t.Errorf("error %q contains the secret", err)
+	}
+}
+
+func otherPublicKey() string {
+	public, _, err := webpush.GenerateKeys()
+	if err != nil {
+		panic(err)
+	}
+	return public
+}
+
+// The VAPID private key never appears in errors.
+func TestVAPIDErrorsDoNotLeakTheKey(t *testing.T) {
+	_, err := Load(env(required(map[string]string{"VAPID_PUBLIC_KEY": otherPublicKey()})))
+	if err == nil || strings.Contains(err.Error(), testPrivateKey) {
+		t.Errorf("error = %v", err)
 	}
 }

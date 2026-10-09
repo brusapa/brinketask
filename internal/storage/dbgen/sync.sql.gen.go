@@ -183,6 +183,12 @@ SELECT s.seq FROM (
     WHERE c.seq > $2
       AND (NOT $3::boolean OR (c.deleted_at IS NULL AND t.deleted_at IS NULL))
     UNION ALL
+    SELECT r.seq FROM reminders r
+    JOIN tasks t ON t.id = r.task_id
+    JOIN list_members m ON m.list_id = t.list_id AND m.user_id = $1
+    WHERE r.seq > $2
+      AND (NOT $3::boolean OR (r.deleted_at IS NULL AND t.deleted_at IS NULL))
+    UNION ALL
     SELECT g.seq FROM tags g
     WHERE g.owner_id = $1 AND g.seq > $2
       AND (NOT $3::boolean OR g.deleted_at IS NULL)
@@ -220,6 +226,60 @@ func (q *Queries) SyncPageSeqs(ctx context.Context, arg SyncPageSeqsParams) ([]i
 			return nil, err
 		}
 		items = append(items, seq)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const syncReminders = `-- name: SyncReminders :many
+SELECT r.id, r.task_id, r.kind, r.offset_minutes, r.at, r.next_fire_at, r.last_fired_at, r.version, r.seq, r.created_at, r.updated_at, r.deleted_at FROM reminders r
+JOIN tasks t ON t.id = r.task_id
+JOIN list_members m ON m.list_id = t.list_id AND m.user_id = $1
+WHERE r.seq > $2 AND r.seq <= $3
+  AND (NOT $4::boolean OR (r.deleted_at IS NULL AND t.deleted_at IS NULL))
+ORDER BY r.seq
+`
+
+type SyncRemindersParams struct {
+	UserID   uuid.UUID
+	After    int64
+	Upper    int64
+	LiveOnly bool
+}
+
+func (q *Queries) SyncReminders(ctx context.Context, arg SyncRemindersParams) ([]Reminder, error) {
+	rows, err := q.db.Query(ctx, syncReminders,
+		arg.UserID,
+		arg.After,
+		arg.Upper,
+		arg.LiveOnly,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Reminder
+	for rows.Next() {
+		var i Reminder
+		if err := rows.Scan(
+			&i.ID,
+			&i.TaskID,
+			&i.Kind,
+			&i.OffsetMinutes,
+			&i.At,
+			&i.NextFireAt,
+			&i.LastFiredAt,
+			&i.Version,
+			&i.Seq,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

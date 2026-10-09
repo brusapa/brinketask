@@ -107,7 +107,10 @@ func taskToAPI(t tasks.Task, withChildren bool) Task {
 		for i, item := range t.ChecklistItems {
 			items[i] = checklistItemToAPI(item)
 		}
-		reminders := []Reminder{}
+		reminders := make([]Reminder, len(t.Reminders))
+		for i, r := range t.Reminders {
+			reminders[i] = reminderToAPI(r)
+		}
 		task.ChecklistItems = &items
 		task.Reminders = &reminders
 	}
@@ -214,5 +217,36 @@ func completionEntryToAPI(e tasks.CompletionEntry) CompletionEntry {
 			Priority: int(e.Priority),
 			Rrule:    pointerToNullable(e.Rrule),
 		},
+	}
+}
+
+func reminderToAPI(r tasks.Reminder) Reminder {
+	version := int(r.Version)
+	taskID := r.TaskID
+	reminder := Reminder{
+		Id:         r.ID,
+		TaskId:     &taskID,
+		Kind:       ReminderKind(r.Kind),
+		At:         utcNullable(r.At),
+		NextFireAt: utcNullable(r.NextFireAt),
+		Version:    &version,
+		CreatedAt:  timePointer(r.CreatedAt),
+		UpdatedAt:  timePointer(r.UpdatedAt),
+		DeletedAt:  utcNullable(r.DeletedAt),
+	}
+	reminder.OffsetMinutes = nullable.NewNullNullable[int]()
+	if r.OffsetMinutes != nil {
+		reminder.OffsetMinutes = nullable.NewNullableWithValue(int(*r.OffsetMinutes))
+	}
+	return reminder
+}
+
+// newReminderFromAPI reads a reminder of a create body.
+func newReminderFromAPI(r ReminderCreate) tasks.NewReminder {
+	return tasks.NewReminder{
+		ID:            r.Id,
+		Kind:          string(r.Kind),
+		OffsetMinutes: nullableToPointer(r.OffsetMinutes),
+		At:            nullableToPointer(r.At),
 	}
 }
