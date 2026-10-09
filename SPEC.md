@@ -108,6 +108,14 @@ Each decision has an identifier so it can be cited in commits and reviews.
 | D-60 | `uncomplete` does not set back the checklist items that R-7 unchecked, as it does not restore the reminders R-8 deleted | Restoring them would need the state of every item in the completion record |
 | D-61 | R-3 applies as written even when a backdated `completed_at` makes the next date fall in the past. R-2's "not earlier than today" compares dates: an occurrence due today at a time already past stays today | Literal rules; the user chose the completion date |
 | D-62 | `skip` behaves like `complete` for a task's state: on a `done` task it is a no-op (`applied: false`), on a `dropped` task 409, on a non-recurring task 409 | Same rules as D-37, plus the contract's 409 |
+| D-63 | The Web Push sender (VAPID, RFC 8292; `aes128gcm` payload encryption, RFC 8291) is our own, on the Go standard library, tested against the RFC 8291 example | About 250 lines with an official test vector, against a library whose last release is from January 2025 and that pulls older dependencies |
+| D-64 | A notification has two actions, **Complete** and **Snooze 10 min**, the most browsers show (Chrome's `Notification.maxActions` is 2). Tapping the notification opens the task, whose detail offers Snooze for 10 min, 1 h or tomorrow at the default time | Section 6 asked for more actions than browsers display |
+| D-65 | The push payload carries data only (task, title, list name and whether it is the inbox, due fields, user zone, reminder); the service worker writes the notification text with the web client's message catalog and `Intl` | One i18n layer, in the client; the server holds no UI text |
+| D-66 | A delivery that fails is retried after 30 s, 1 min, 2 min, 4 min and 8 min (`notification_deliveries.next_attempt_at`); after the fifth failed attempt it is `failed`. A 404 or 410 from the push service disables the subscription at once | Section 6 asked for at most 5 retries with exponential backoff and gave no schedule |
+| D-67 | Deleting a task keeps its reminders, with `next_fire_at` null; they come back with it, as its checklist does (D-45). An `absolute` reminder created in the past is accepted with `next_fire_at` null; only `snooze` refuses a past instant (D-32) | A past absolute reminder is history, not an error |
+| D-68 | `brinketask vapid-keys` prints a new VAPID key pair, for operators, the development setup and the smoke test | Generating P-256 keys in the expected encoding needs a tool |
+| D-69 | The web client labels a device from its browser and system ("Chrome on Linux"); labels cannot be changed, since the contract has no `PATCH` for subscriptions | Enough to tell devices apart |
+| D-70 | A reminder that fires while its user has no active subscription is consumed like any other (`next_fire_at` null, `last_fired_at` set); nothing is sent | A device added later must not receive old reminders |
 
 ## 4. Data model
 
@@ -199,7 +207,7 @@ At most 5 live reminders per task (`snooze` reminders do not count).
 
 ### notification_deliveries
 
-`id`, `reminder_id`, `fire_at`, `subscription_id`, `status` (`pending | sent | failed | skipped`), `attempts`, `sent_at`, `error`. Unique on (`reminder_id`, `fire_at`, `subscription_id`) so nothing is sent twice.
+`id`, `reminder_id`, `fire_at`, `subscription_id`, `status` (`pending | sent | failed | skipped`), `attempts`, `next_attempt_at` (D-66), `sent_at`, `error`. Unique on (`reminder_id`, `fire_at`, `subscription_id`) so nothing is sent twice.
 
 ### sessions
 
@@ -273,8 +281,8 @@ Any other part is rejected with 422. The start of the series (`DTSTART`) is not 
 
 ### Notification
 
-- Content: task title, list name, due date. The payload is encrypted (Web Push standard with VAPID keys).
-- Actions: **Complete** and **Snooze** (10 min, 1 h, tomorrow at the default time). The service worker performs them against the API using the session cookie; if the session has expired, it opens the app.
+- Content: task title, list name, due date. The payload is encrypted (Web Push standard with VAPID keys) and carries data, not text (D-65).
+- Actions: **Complete** and **Snooze 10 min**; the task detail offers Snooze for 10 min, 1 h or tomorrow at the default time (D-64). The service worker performs them against the API using the session cookie; if the session has expired, it opens the app.
 - Snooze = `POST /tasks/{id}/snooze`, which creates a `snooze` reminder (details in D-32).
 - Notification texts (action labels, date formatting) are externalized like the rest of the UI (section 9).
 
@@ -355,7 +363,7 @@ The section is fed by completion records, not by tasks with `status = done`, so 
 
 ## 10. Non-functional requirements
 
-- **Configuration** through environment variables. Minimum: `DATABASE_URL`, `PUBLIC_URL`, `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`; each becomes required in the phase that uses it. Optional: `LISTEN_ADDR` (default `:8080`), `LOG_LEVEL` (`debug`, `info`, `warn`, `error`; default `info`).
+- **Configuration** through environment variables. Minimum: `DATABASE_URL`, `PUBLIC_URL`, `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`; each becomes required in the phase that uses it. `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` are base64url (no padding), as `brinketask vapid-keys` prints them (D-68); `VAPID_SUBJECT` is a `mailto:` or `https:` URL the push services can contact. Optional: `LISTEN_ADDR` (default `:8080`), `LOG_LEVEL` (`debug`, `info`, `warn`, `error`; default `info`).
   - Optional, each read from the phase that uses it (D-29): `SESSION_IDLE_TIMEOUT` (default `168h`), `SESSION_MAX_AGE` (default `720h`), `SCHEDULER_INTERVAL` (default `15s`), `REMINDER_MAX_LATENESS` (default `12h`). Durations use Go syntax (`90m`, `12h`).
   - `PUBLIC_URL` is the origin the browser uses (`https://tasks.example.com`, no path). It must be `https`, except on a loopback host (`localhost`, `127.0.0.1`, `[::1]`), which browsers treat as secure. The OIDC redirect URL is `PUBLIC_URL` + `/auth/callback`.
   - Secrets accept a `_FILE` variant (path to a file whose content is the value; a trailing newline is ignored; setting both forms is an error): `DATABASE_URL`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `VAPID_PRIVATE_KEY`.
@@ -400,7 +408,7 @@ Indicative. Before adopting any, check that it is still maintained and check its
 
 ## 14. Open points to verify
 
-1. Current browser support for notification action buttons (affects section 6, "Notification").
+1. ~~Current browser support for notification action buttons~~: resolved by D-64.
 2. State of OpenAPI 3.1 support in the chosen Go generator (D-02).
 3. Format of Pocket ID access tokens, with `bearerAuth` in V2 in mind.
 4. Choice between Firebase and UnifiedPush for Android (V2).
