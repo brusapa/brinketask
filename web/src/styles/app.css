@@ -1337,3 +1337,75 @@ textarea.input {
 .banner > span {
   flex: 1 1 240px;
 }
+
+/* The drag handle sits in the row's left padding and shows on hover or
+   keyboard focus; rows start 16 px further left to make room. */
+.drag-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 24px;
+  margin-left: -14px;
+  margin-right: -6px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: grab;
+  opacity: 0;
+}
+
+[data-hovered] > .drag-handle,
+.drag-handle[data-focus-visible],
+[data-focus-visible] > .drag-handle {
+  opacity: 1;
+}
+
+@media (pointer: coarse) {
+  /* Touch devices drag with a long press on the row; the handle stays
+     for screen reader users only. */
+  .drag-handle {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+}
+
+/* The due button in the detail header is red when overdue, like the row. */
+.header-button.task-due-overdue {
+  color: var(--color-danger);
+}
+
+@media (pointer: coarse) {
+  /* The meta line under the title: indented once, past the checkbox. */
+  .task-row .task-meta:empty {
+    display: none;
+  }
+
+  .task-row .task-meta:not(:empty) + .task-due {
+    margin-left: 6px;
+  }
+}
+
+/* On phones the quick-add field sits at the bottom of the list screen
+   (DESIGN.md section 2). */
+@media (max-width: 767px) {
+  .quick-add {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: 8px 12px 16px;
+    background: var(--color-bg);
+    border-top: 1px solid var(--color-border);
+    z-index: 5;
+  }
+
+  .quick-add .quick-add-field {
+    margin-bottom: 0;
+  }
+}

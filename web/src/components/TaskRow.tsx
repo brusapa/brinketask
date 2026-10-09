@@ -8,6 +8,7 @@ import { useProfile, useServices, useSnapshot } from "../app/services";
 import type { TaskRow as Row } from "../data/replica";
 import { isOverdue } from "../lib/dates";
 import { formatDue } from "../lib/format";
+import { DragHandle } from "./DragHandle";
 import { priorityKey } from "./priority";
 import { TaskCheckbox } from "./TaskCheckbox";
 
@@ -58,6 +59,7 @@ export function TaskRow({
 
   return (
     <GridListItem id={task.id} textValue={task.title} className="task-row">
+      <DragHandle />
       <TaskCheckbox
         className={`priority-${priority}`}
         isSelected={false}

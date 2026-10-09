@@ -1,0 +1,13 @@
+/* React Aria inserts this rule in a <style> element the first time a
+   pressable component renders, which our Content-Security-Policy blocks
+   (style-src 'self', no inline styles). It skips the insertion when an
+   element with id "react-aria-pressable-style" already exists, so
+   index.html links this file with that id instead. The rule keeps taps
+   from waiting for a double-tap zoom on touch devices. A test in
+   src/test/pressable.test.ts checks that React Aria still uses this id
+   and attribute. */
+@layer {
+  [data-react-aria-pressable] {
+    touch-action: pan-x pan-y pinch-zoom;
+  }
+}

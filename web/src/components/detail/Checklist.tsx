@@ -17,6 +17,7 @@ import { useTranslation } from "react-i18next";
 import type { ChecklistItem } from "../../api/types";
 import { useServices, useSnapshot } from "../../app/services";
 import { comparePositions, positionForMove } from "../../lib/positions";
+import { DragHandle } from "../DragHandle";
 import { TaskCheckbox } from "../TaskCheckbox";
 
 export function Checklist({ taskId }: { taskId: string }) {
@@ -78,6 +79,7 @@ function ChecklistRow({ item }: { item: ChecklistItem }) {
 
   return (
     <GridListItem id={item.id} textValue={item.title} className="checklist-row">
+      <DragHandle />
       <TaskCheckbox
         isSelected={item.is_done}
         onChange={(done) => {

@@ -35,6 +35,7 @@ import { useNow, useProfile, useServices, useSnapshot } from "../app/services";
 import { counts, sortedLists, sortedTags } from "../data/views";
 import { positionForMove } from "../lib/positions";
 import { ConfirmDialog, ListDialog, NameDialog } from "./dialogs";
+import { DragHandle } from "./DragHandle";
 import { listDragType, taskDragType } from "./drag";
 
 // The event React Aria passes to a drop target, taken from its props.
@@ -246,6 +247,7 @@ function Lists({ counts: listCounts }: { counts: ReadonlyMap<string, number> }) 
             textValue={list.name}
             className={location.pathname === path ? "nav-row nav-row-current" : "nav-row"}
           >
+            <DragHandle />
             <span
               className="list-dot"
               style={list.color ? { backgroundColor: list.color } : undefined}
