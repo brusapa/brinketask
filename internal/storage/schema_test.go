@@ -2,6 +2,7 @@ package storage_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/brusapa/brinketask/internal/storage/storagetest"
@@ -109,5 +110,33 @@ func TestPositionsCompareByCodePoint(t *testing.T) {
 	}
 	if order != "Zz a0 a00" {
 		t.Errorf("order = %q, want %q", order, "Zz a0 a00")
+	}
+}
+
+// A recurring task always has the start of its series (D-56).
+func TestRecurringTaskNeedsSeriesStart(t *testing.T) {
+	ctx := context.Background()
+	pool := storagetest.NewPool(t)
+	_, err := pool.Exec(ctx, `
+		INSERT INTO users (id, oidc_issuer, oidc_subject, created_at, updated_at)
+		VALUES ('00000000-0000-7000-8000-000000000001', 'i', 'a', now(), now());
+		INSERT INTO lists (id, owner_id, name, position, is_inbox, version, seq, created_at, updated_at)
+		VALUES ('00000000-0000-7000-8000-0000000000b1', '00000000-0000-7000-8000-000000000001', 'x', 'a0', false, 1, 1, now(), now())`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	insert := func(seq int, start *string) error {
+		_, err := pool.Exec(ctx, `INSERT INTO tasks (id, list_id, title, status, priority, position, due_date, rrule,
+			recurrence_start, repeat_from, version, seq, created_at, updated_at)
+			VALUES (gen_random_uuid(), '00000000-0000-7000-8000-0000000000b1', 't', 'open', 0, 'a0',
+			'2026-10-09', 'FREQ=DAILY', $2::date, 'due', 1, $1, now(), now())`, seq, start)
+		return err
+	}
+	if err := insert(2, nil); err == nil || !strings.Contains(err.Error(), "tasks_rrule_needs_start") {
+		t.Errorf("a rule without a series start: err = %v", err)
+	}
+	start := "2026-10-09"
+	if err := insert(3, &start); err != nil {
+		t.Errorf("a rule with a series start: %v", err)
 	}
 }

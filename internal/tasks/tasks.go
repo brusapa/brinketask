@@ -435,7 +435,7 @@ func (s *Service) writeTask(ctx context.Context, q *dbgen.Queries, task *dbgen.T
 		ID: task.ID, ListID: task.ListID, Title: task.Title, Description: task.Description,
 		Status: task.Status, Priority: task.Priority, Position: task.Position,
 		DueDate: task.DueDate, DueTime: task.DueTime, DueTz: task.DueTz, Rrule: task.Rrule,
-		RepeatFrom: task.RepeatFrom, RecurrenceDoneCount: task.RecurrenceDoneCount,
+		RecurrenceStart: task.RecurrenceStart, RepeatFrom: task.RepeatFrom, RecurrenceDoneCount: task.RecurrenceDoneCount,
 		CompletedAt: task.CompletedAt, TagIds: task.TagIds, Version: task.Version, Seq: task.Seq,
 		UpdatedAt: task.UpdatedAt, DeletedAt: task.DeletedAt,
 	})

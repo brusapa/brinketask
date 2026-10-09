@@ -27,3 +27,20 @@ UPDATE checklist_items
 SET title = @title, is_done = @is_done, position = @position, version = @version, seq = @seq,
     updated_at = @updated_at, deleted_at = @deleted_at
 WHERE id = @id;
+
+-- name: LockDoneItemIDsOfTask :many
+-- The live, ticked items of a task, locked: R-7 unticks them when a
+-- recurring task advances. The caller holds the task's lock already.
+SELECT id FROM checklist_items
+WHERE task_id = @task_id AND deleted_at IS NULL AND is_done
+ORDER BY id
+FOR UPDATE;
+
+-- name: UncheckItems :exec
+-- Unticks items, each with its own new seq (D-07).
+UPDATE checklist_items c
+SET is_done = false, version = c.version + 1, seq = v.seq, updated_at = @now
+-- Two unnest calls in one SELECT list advance together, pairing ids[i]
+-- with seqs[i].
+FROM (SELECT unnest(@ids::uuid[]) AS id, unnest(@seqs::bigint[]) AS seq) AS v
+WHERE c.id = v.id;
