@@ -145,9 +145,12 @@ Do not route `/metrics` or the metrics port through the proxy.
 ## 7. Start
 
 With the example compose file, `brinketask.env` and `db.env` filled in
-next to it:
+next to it, and the tag of the image built in section 1 in a file named
+`.env` in the same directory (compose reads it by itself, for every
+command):
 
 ```sh
+echo BRINKETASK_VERSION=<version> > .env
 podman compose -f compose.example.yaml up -d
 podman compose -f compose.example.yaml logs -f app
 ```
@@ -183,11 +186,12 @@ Open `PUBLIC_URL`; it sends you to Pocket ID and back.
 
 1. Back up the database (`docs/backup.md`).
 2. Build the image of the new version.
-3. Point the compose file at it and run `podman compose up -d`.
+3. Set its tag in `.env` (`BRINKETASK_VERSION=<new version>`) and run
+   `podman compose -f compose.example.yaml up -d`.
 
 The new server applies its migrations at startup. Migrations only go
 forward: to go back to an older version, restore the backup taken in
-step 1 and run the older image.
+step 1 and set the older tag again.
 
 Several replicas of the server can share one database: reminders are
 claimed so that each is sent once, and only one replica purges at a

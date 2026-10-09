@@ -1,9 +1,13 @@
 # Example production deployment: PostgreSQL and brinketask on one host,
 # behind a reverse proxy that terminates TLS (docs/deployment.md). Copy it
 # next to brinketask.env and db.env, made from the *.env.example files,
-# and adapt it. It holds no secrets.
+# and to a file named .env that sets the image tag, which compose reads by
+# itself:
 #
+#   echo BRINKETASK_VERSION=<version> > .env
 #   podman compose -f compose.example.yaml up -d
+#
+# It holds no secrets.
 name: brinketask
 
 services:
@@ -27,7 +31,9 @@ services:
   app:
     # Built from a release of the repository (docs/deployment.md):
     #   podman build -f deploy/Dockerfile -t localhost/brinketask:<version> .
-    image: localhost/brinketask:latest
+    # The tag comes from .env (above); compose stops with this message
+    # when it is missing.
+    image: localhost/brinketask:${BRINKETASK_VERSION:?set BRINKETASK_VERSION in .env to the tag you built}
     env_file: brinketask.env # DATABASE_URL, OIDC_*, VAPID_*, PUBLIC_URL
     ports:
       # Only the reverse proxy on this host reaches the application.
