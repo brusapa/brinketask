@@ -239,3 +239,8 @@ test("a list in the sidebar opens its screen", async () => {
   expect(await screen.findByRole("heading", { level: 1, name: "Work" })).toBeDefined();
   expect(screen.getByRole("row", { name: /Quarterly report/ })).toBeDefined();
 });
+
+test("the inbox under its list id redirects to its own screen", async () => {
+  await renderApp({ path: `/lists/${inboxId}` });
+  expect(await screen.findByRole("heading", { level: 1, name: "Inbox" })).toBeDefined();
+});

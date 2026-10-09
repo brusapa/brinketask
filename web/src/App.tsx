@@ -86,8 +86,9 @@ function ListScreen() {
   const { listId = "" } = useParams();
   const snapshot = useSnapshot();
   const list = snapshot.lists.get(listId);
-  // A deleted or unknown list: back to the inbox.
-  if (list === undefined) return <Navigate to="/" replace />;
+  // A deleted or unknown list, or the inbox under its id: the inbox's own
+  // screen ("/"), which shows its translated name.
+  if (list === undefined || list.is_inbox) return <Navigate to="/" replace />;
   // `key` gives each list its own component state (quick-add text).
   return <TaskListView key={listId} view={{ kind: "list", listId }} title={list.name} />;
 }
