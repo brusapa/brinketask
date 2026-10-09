@@ -26,6 +26,7 @@ import (
 	"github.com/brusapa/brinketask/internal/health"
 	"github.com/brusapa/brinketask/internal/httpapi"
 	"github.com/brusapa/brinketask/internal/notify"
+	"github.com/brusapa/brinketask/internal/purge"
 	"github.com/brusapa/brinketask/internal/session"
 	"github.com/brusapa/brinketask/internal/storage"
 	"github.com/brusapa/brinketask/internal/tasks"
@@ -130,19 +131,12 @@ func run() error {
 		return err
 	}
 
-	// The reminder scheduler runs in this process (SPEC section 2) until
-	// shutdown; schedulerDone closes when it has stopped.
+	// The reminder scheduler and the purge run in this process (SPEC
+	// section 2, D-71) until shutdown, which waits for them to stop.
 	scheduler := notify.NewScheduler(pool, clk, taskService, sender, cfg.ReminderMaxLateness, logger)
-	schedulerCtx, stopScheduler := context.WithCancel(ctx)
-	schedulerDone := make(chan struct{})
-	go func() {
-		defer close(schedulerDone)
-		scheduler.Run(schedulerCtx, cfg.SchedulerInterval)
-	}()
-	defer func() {
-		stopScheduler()
-		<-schedulerDone
-	}()
+	defer background(ctx, func(ctx context.Context) { scheduler.Run(ctx, cfg.SchedulerInterval) })()
+	purger := purge.New(pool, clk, logger)
+	defer background(ctx, func(ctx context.Context) { purger.Run(ctx, purge.Interval) })()
 
 	server := &http.Server{
 		Addr:              cfg.ListenAddr,
@@ -176,4 +170,20 @@ func run() error {
 		return fmt.Errorf("http server: %w", err)
 	}
 	return nil
+}
+
+// background runs work in a goroutine until ctx ends or the returned stop
+// function is called; stop waits for work to return. Deferred, it makes
+// shutdown wait for background jobs before the database pool closes.
+func background(ctx context.Context, work func(context.Context)) (stop func()) {
+	ctx, cancel := context.WithCancel(ctx)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		work(ctx)
+	}()
+	return func() {
+		cancel()
+		<-done
+	}
 }
