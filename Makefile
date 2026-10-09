@@ -22,7 +22,7 @@ $(WEB_DEPS): web/package-lock.json
 	cd web && npm ci --no-fund --no-audit
 	touch $@
 
-.PHONY: all generate check-generated lint go-lint web-lint test go-test web-test build web-build image dev dev-down clean
+.PHONY: all generate check-generated lint go-lint web-lint test go-test web-test build web-build image e2e dev dev-down clean
 
 all: lint test build
 
@@ -67,6 +67,12 @@ web-build: $(WEB_DEPS)
 
 image:
 	$(CONTAINER_ENGINE) build -f deploy/Dockerfile -t $(IMAGE) .
+
+# End-to-end test (SPEC section 11) of the image `make image` built, in a
+# Podman pod; see deploy/e2e.sh. PLAYWRIGHT_CHROMIUM may name a Chromium
+# to use instead of Playwright's.
+e2e: $(WEB_DEPS)
+	E2E_IMAGE=$(IMAGE) deploy/e2e.sh
 
 DEV_COMPOSE := $(CONTAINER_ENGINE) compose -f deploy/compose.dev.yaml
 
