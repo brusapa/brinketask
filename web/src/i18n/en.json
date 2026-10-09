@@ -173,5 +173,34 @@
     "message": "This device is set to {{device}}, but your profile uses {{profile}}.",
     "use": "Use {{zone}}",
     "keep": "Keep {{zone}}"
+  },
+  "repeat": {
+    "none": "Does not repeat",
+    "every": {
+      "DAILY_one": "Every day",
+      "DAILY_other": "Every {{count}} days",
+      "WEEKLY_one": "Every week",
+      "WEEKLY_other": "Every {{count}} weeks",
+      "MONTHLY_one": "Every month",
+      "MONTHLY_other": "Every {{count}} months",
+      "YEARLY_one": "Every year",
+      "YEARLY_other": "Every {{count}} years"
+    },
+    "afterCompletion": {
+      "DAILY_one": "1 day after completion",
+      "DAILY_other": "{{count}} days after completion",
+      "WEEKLY_one": "1 week after completion",
+      "WEEKLY_other": "{{count}} weeks after completion",
+      "MONTHLY_one": "1 month after completion",
+      "MONTHLY_other": "{{count}} months after completion",
+      "YEARLY_one": "1 year after completion",
+      "YEARLY_other": "{{count}} years after completion"
+    },
+    "onDays": "{{rule}} on {{days}}",
+    "onLastDay": "{{rule}} on the last day",
+    "onMonthDay": "{{rule}} on day {{day}}",
+    "times_one": "{{rule}}, once",
+    "times_other": "{{rule}}, {{count}} times",
+    "until": "{{rule}}, until {{date}}"
   }
 }
