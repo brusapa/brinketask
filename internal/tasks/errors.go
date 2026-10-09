@@ -46,16 +46,6 @@ func (e *ValidationError) Error() string {
 	return "tasks: invalid request: " + strings.Join(parts, "; ")
 }
 
-// NotImplementedError means the request uses a feature of a later phase
-// (D-34).
-type NotImplementedError struct {
-	Feature string
-}
-
-func (e *NotImplementedError) Error() string {
-	return "tasks: not implemented yet: " + e.Feature
-}
-
 // invalid returns a *ValidationError for fields, or nil when there are none.
 // It returns the error interface so callers can write
 // `if err := invalid(fields); err != nil`.

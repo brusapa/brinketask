@@ -16,7 +16,6 @@ import (
 func domainProblem(err error) (problem Problem, ok bool) {
 	var conflictErr *tasks.ConflictError
 	var validationErr *tasks.ValidationError
-	var notImplemented *tasks.NotImplementedError
 	switch {
 	case errors.Is(err, tasks.ErrNotFound):
 		return newProblem(http.StatusNotFound, ProblemCodeNotFound, ""), true
@@ -33,9 +32,6 @@ func domainProblem(err error) (problem Problem, ok bool) {
 			fields[i] = FieldError{Field: f.Field, Message: f.Message}
 		}
 		return newValidationProblem(fields), true
-	case errors.As(err, &notImplemented):
-		return newProblem(http.StatusNotImplemented, ProblemCodeNotImplemented,
-			notImplemented.Feature+" arrives in a later phase"), true
 	}
 	return Problem{}, false
 }

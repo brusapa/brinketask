@@ -25,6 +25,7 @@ import (
 	"github.com/brusapa/brinketask/internal/config"
 	"github.com/brusapa/brinketask/internal/health"
 	"github.com/brusapa/brinketask/internal/httpapi"
+	"github.com/brusapa/brinketask/internal/notify"
 	"github.com/brusapa/brinketask/internal/session"
 	"github.com/brusapa/brinketask/internal/storage"
 	"github.com/brusapa/brinketask/internal/tasks"
@@ -109,7 +110,10 @@ func run() error {
 	// Changing the profile zone or default time recomputes reminders (SPEC
 	// section 6), in the transaction of the change.
 	accounts.OnSettingsChanged(taskService.RecomputeUserReminders)
-	err = httpapi.Register(mux, httpapi.NewServer(accounts, taskService), logger,
+	sender := webpush.NewSender(cfg.Push.Keys, cfg.Push.Subject, &http.Client{Timeout: 30 * time.Second}, clk)
+	devices := notify.NewDevices(pool, clk, sender, logger)
+	defer devices.Wait()
+	err = httpapi.Register(mux, httpapi.NewServer(accounts, taskService, devices, cfg.Push.Keys.Public), logger,
 		sameOrigin,
 		httpapi.Authenticate(sessions, logger),
 		httpapi.RateLimit(limiter),

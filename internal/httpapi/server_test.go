@@ -90,23 +90,6 @@ const (
 	someID         = "0192f1a0-0000-7000-8000-000000000001"
 )
 
-func TestOperationsAnswerNotImplemented(t *testing.T) {
-	mux := newTestMux(t, Server{})
-	tests := []struct {
-		method, path, contentType, body string
-	}{
-		// Operations of later phases (push, until its commit).
-		{http.MethodGet, "/api/v1/push/subscriptions", "", ""},
-		{http.MethodPost, "/api/v1/push/subscriptions/" + someID + "/test", "", ""},
-	}
-	for _, tt := range tests {
-		t.Run(tt.method+" "+tt.path, func(t *testing.T) {
-			rec := serve(t, mux, newRequest(t, tt.method, tt.path, tt.contentType, tt.body))
-			decodeProblem(t, rec, http.StatusNotImplemented, ProblemCodeNotImplemented)
-		})
-	}
-}
-
 func TestUnknownAPIPathIsNotFoundProblem(t *testing.T) {
 	rec := serve(t, newTestMux(t, Server{}), newRequest(t, http.MethodGet, "/api/v1/no-such-thing", "", ""))
 	decodeProblem(t, rec, http.StatusNotFound, ProblemCodeNotFound)
@@ -202,7 +185,7 @@ type recordingServer struct {
 
 func (s recordingServer) PatchMe(_ context.Context, request PatchMeRequestObject) (PatchMeResponseObject, error) {
 	*s.got = request
-	return PatchMedefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
+	return PatchMedefaultApplicationProblemPlusJSONResponse(stubProblem()), nil
 }
 
 // Validation reads the body; the handler must still receive all of it.
