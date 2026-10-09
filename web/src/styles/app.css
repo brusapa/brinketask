@@ -1508,3 +1508,31 @@ textarea.input {
   font-weight: 600;
   color: var(--color-text-muted);
 }
+
+/* ---- Devices (settings) ------------------------------------------------ */
+
+.device-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.device {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.device-label {
+  display: inline-flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+}
+
+.device .view-note {
+  margin: 0;
+}

@@ -9,6 +9,8 @@ import { useTranslation } from "react-i18next";
 
 import { ApiError, createApi, unwrap } from "../api/client";
 import { i18n } from "../i18n";
+import type { PushEnvironment } from "../push/browser";
+import { deviceLabel, refreshRegistration } from "../push/devices";
 import type { Clock } from "../lib/clock";
 import { errorMessage, ServicesContext, createServices, type Services } from "./services";
 
@@ -22,6 +24,8 @@ export interface Environment {
   leave: (path: string) => void;
   /** The browser's IANA time zone. */
   browserZone: string;
+  /** The browser's push APIs. */
+  push: PushEnvironment;
   fetch?: (request: Request) => Promise<Response>;
 }
 
@@ -60,6 +64,7 @@ export function Root({ env, children }: { env: Environment; children: ReactNode 
           clock: env.clock,
           user,
           browserZone: env.browserZone,
+          push: env.push,
           logout: async () => {
             // An operational route, outside the API contract (SPEC
             // section 7); it answers 204, with or without a session.
@@ -76,6 +81,9 @@ export function Root({ env, children }: { env: Environment; children: ReactNode 
         });
         await services.syncer.pull();
         if (!cancelled) setBoot({ kind: "ready", services });
+        // Keeps this browser's device registered for the signed-in user
+        // (D-32); in the background, failures ignored.
+        void refreshRegistration(api, env.push, env.clock, deviceLabel(env.push, i18nT));
       } catch (err) {
         // A 401 already sent the browser to the login.
         if (!cancelled && !(err instanceof ApiError && err.status === 401)) {

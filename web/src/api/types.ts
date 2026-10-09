@@ -5,6 +5,7 @@ import type { components } from "./schema.gen";
 type Schemas = components["schemas"];
 
 export type User = Schemas["User"];
+export type UserPatch = Schemas["UserPatch"];
 export type List = Schemas["List"];
 export type Task = Schemas["Task"];
 export type ChecklistItem = Schemas["ChecklistItem"];
