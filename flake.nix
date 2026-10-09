@@ -1,5 +1,5 @@
-# brinketask as a Nix flake (D-74): the package, an overlay and the
-# checks CI runs. See docs/deployment.md, "NixOS".
+# brinketask as a Nix flake (D-74): the package, an overlay, a NixOS
+# module and the checks CI runs. See docs/deployment.md, "NixOS".
 {
   description = "brinketask: self-hosted tasks and reminders";
 
@@ -28,6 +28,16 @@
 
       overlays.default = final: _prev: { brinketask = brinketaskFor final; };
 
+      # The module, with this flake's package as the default.
+      nixosModules.default =
+        { lib, pkgs, ... }:
+        {
+          imports = [ ./nix/module.nix ];
+          services.brinketask.package =
+            lib.mkDefault
+              self.packages.${pkgs.stdenv.hostPlatform.system}.default;
+        };
+
       # `nix run github:brusapa/brinketask -- vapid-keys`
       apps = forAllSystems (pkgs: {
         default = {
@@ -39,6 +49,7 @@
 
       checks = forAllSystems (pkgs: {
         package = self.packages.${pkgs.stdenv.hostPlatform.system}.default;
+        nixos = pkgs.testers.runNixOSTest (import ./nix/test.nix { module = self.nixosModules.default; });
       });
     };
 }
