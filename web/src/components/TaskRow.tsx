@@ -1,15 +1,18 @@
 // One open task in a list (DESIGN.md section 5, "Task row content").
 import { GridListItem } from "react-aria-components";
+
+import { RepeatIcon } from "./RepeatIcon";
 import { useTranslation } from "react-i18next";
 
 import type { CalendarDate } from "@internationalized/date";
 
-import { useProfile, useServices, useSnapshot } from "../app/services";
+import { useProfile, useSnapshot } from "../app/services";
 import type { TaskRow as Row } from "../data/replica";
 import { isOverdue } from "../lib/dates";
 import { formatDue } from "../lib/format";
 import { DragHandle } from "./DragHandle";
 import { priorityKey } from "./priority";
+import { useRecord } from "./useRecord";
 import { TaskCheckbox } from "./TaskCheckbox";
 
 export function TaskRow({
@@ -30,7 +33,6 @@ export function TaskRow({
   const { t, i18n } = useTranslation();
   const snapshot = useSnapshot();
   const profile = useProfile();
-  const { actions, toasts } = useServices();
 
   const overdue = isOverdue(task, now, profile.timezone);
   const due = formatDue(task, today, profile.timezone, i18n.language);
@@ -42,20 +44,7 @@ export function TaskRow({
   });
   const priority = priorityKey(task.priority);
 
-  const complete = async () => {
-    const completionId = await actions.complete(task.id);
-    if (completionId === undefined) return;
-    toasts.show({
-      message: t("task.completed"),
-      tone: "info",
-      action: {
-        label: t("common.undo"),
-        run: () => {
-          void actions.uncomplete(task.id, completionId);
-        },
-      },
-    });
-  };
+  const record = useRecord();
 
   return (
     <GridListItem id={task.id} textValue={task.title} className="task-row">
@@ -64,7 +53,7 @@ export function TaskRow({
         className={`priority-${priority}`}
         isSelected={false}
         onChange={() => {
-          void complete();
+          void record(task.id, "complete");
         }}
         label={
           priority === "none"
@@ -82,6 +71,7 @@ export function TaskRow({
             {progress.done}/{progress.total}
           </span>
         )}
+        {task.rrule && <RepeatIcon />}
         {tags.map((tag) => (
           <span key={tag.id} className="chip">
             {tag.name}

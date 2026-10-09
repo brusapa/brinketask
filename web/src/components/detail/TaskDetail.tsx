@@ -1,8 +1,9 @@
 // The task detail panel (DESIGN.md section 2): header with the complete
 // box, due date, priority and close; title; description; checklist; the
-// List and Tags fields; footer with the creation date and delete. Repeat,
-// Reminders and "Skip this occurrence" arrive in phases 4 and 5 (D-50).
-import { ArrowLeft, Flag, Trash2, X } from "lucide-react";
+// List, Tags and Repeat fields; footer with the creation date, "Skip this
+// occurrence" for recurring tasks, and delete. Reminders arrive in phase 5
+// (D-50).
+import { ArrowLeft, Flag, SkipForward, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import {
   Button,
@@ -29,8 +30,10 @@ import { dateIn } from "../../lib/dates";
 import { formatDay } from "../../lib/format";
 import { priorityKey, priorityKeys } from "../priority";
 import { TaskCheckbox } from "../TaskCheckbox";
+import { useRecord } from "../useRecord";
 import { Checklist } from "./Checklist";
 import { DueEditor } from "./DueEditor";
+import { RepeatEditor } from "./RepeatEditor";
 import { TagsField } from "./TagsField";
 
 export function TaskDetail({ taskId, onClose }: { taskId: string; onClose: () => void }) {
@@ -57,20 +60,7 @@ function DetailPanel({ task, onClose }: { task: TaskRow; onClose: () => void }) 
     void actions.updateTask(task.id, fields);
   };
 
-  const complete = async () => {
-    const completionId = await actions.complete(task.id);
-    if (completionId === undefined) return;
-    toasts.show({
-      message: t("task.completed"),
-      tone: "info",
-      action: {
-        label: t("common.undo"),
-        run: () => {
-          void actions.uncomplete(task.id, completionId);
-        },
-      },
-    });
-  };
+  const record = useRecord();
 
   const remove = async () => {
     onClose();
@@ -109,7 +99,7 @@ function DetailPanel({ task, onClose }: { task: TaskRow; onClose: () => void }) 
           className={`priority-${priority}`}
           isSelected={false}
           onChange={() => {
-            void complete();
+            void record(task.id, "complete");
           }}
           label={t("task.complete")}
         />
@@ -161,6 +151,10 @@ function DetailPanel({ task, onClose }: { task: TaskRow; onClose: () => void }) 
           <dd>
             <TagsField task={task} />
           </dd>
+          <dt>{t("detail.repeat")}</dt>
+          <dd>
+            <RepeatEditor task={task} onPatch={patch} />
+          </dd>
         </dl>
       </div>
 
@@ -168,6 +162,17 @@ function DetailPanel({ task, onClose }: { task: TaskRow; onClose: () => void }) 
         <span>
           {t("detail.created", { date: formatDay(created, profile.timezone, i18n.language) })}
         </span>
+        {task.rrule && (
+          <Button
+            className="header-button detail-skip"
+            onPress={() => {
+              void record(task.id, "skip");
+            }}
+          >
+            <SkipForward size={16} strokeWidth={1.5} aria-hidden="true" />
+            <span>{t("task.skip")}</span>
+          </Button>
+        )}
         <Button
           className="icon-button"
           aria-label={t("task.delete")}

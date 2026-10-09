@@ -112,7 +112,12 @@
     "overdue": "Overdue:",
     "checklistProgress": "{{done}} of {{total}} checklist items done",
     "delete": "Delete task",
-    "deleted": "Task deleted"
+    "deleted": "Task deleted",
+    "completedNext": "Completed. Next: {{date}}",
+    "skipped": "Occurrence skipped",
+    "skippedNext": "Occurrence skipped. Next: {{date}}",
+    "skip": "Skip this occurrence",
+    "repeats": "Repeats"
   },
   "checklist": {
     "label": "Checklist",
@@ -131,7 +136,8 @@
     "editDescription": "Edit description",
     "list": "List",
     "tags": "Tags",
-    "created": "Created {{date}}"
+    "created": "Created {{date}}",
+    "repeat": "Repeat"
   },
   "due": {
     "none": "No date",
@@ -202,5 +208,40 @@
     "times_one": "{{rule}}, once",
     "times_other": "{{rule}}, {{count}} times",
     "until": "{{rule}}, until {{date}}"
+  },
+  "repeatEditor": {
+    "title": "Repeat",
+    "edit": "Repeat: {{summary}}",
+    "frequency": "Repeats",
+    "freq": {
+      "DAILY": "Daily",
+      "WEEKLY": "Weekly",
+      "MONTHLY": "Monthly",
+      "YEARLY": "Yearly"
+    },
+    "interval": "Every",
+    "unit": {
+      "DAILY_one": "day",
+      "DAILY_other": "days",
+      "WEEKLY_one": "week",
+      "WEEKLY_other": "weeks",
+      "MONTHLY_one": "month",
+      "MONTHLY_other": "months",
+      "YEARLY_one": "year",
+      "YEARLY_other": "years"
+    },
+    "repeatFrom": "Next date counts from",
+    "fromDue": "The due date",
+    "fromCompletion": "The completion date",
+    "onDays": "On",
+    "monthDay": "Day of the month",
+    "dueDay": "Same day as the due date",
+    "lastDay": "Last day of the month",
+    "ends": "Ends",
+    "never": "Never",
+    "afterCount": "After a number of times",
+    "onDate": "On a date",
+    "times": "Times",
+    "lastDate": "Last date"
   }
 }
