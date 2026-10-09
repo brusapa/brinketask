@@ -20,6 +20,19 @@ type AuthRequest struct {
 	ExpiresAt    time.Time
 }
 
+type ChecklistItem struct {
+	ID        uuid.UUID
+	TaskID    uuid.UUID
+	Title     string
+	IsDone    bool
+	Position  string
+	Version   int32
+	Seq       int64
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	DeletedAt *time.Time
+}
+
 type List struct {
 	ID        uuid.UUID
 	OwnerID   uuid.UUID
@@ -49,8 +62,59 @@ type Session struct {
 }
 
 type SyncState struct {
-	ID  bool
-	Seq int64
+	ID            bool
+	Seq           int64
+	PurgedUpToSeq int64
+}
+
+type Tag struct {
+	ID        uuid.UUID
+	OwnerID   uuid.UUID
+	Name      string
+	Color     *string
+	Version   int32
+	Seq       int64
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	DeletedAt *time.Time
+}
+
+type Task struct {
+	ID                  uuid.UUID
+	ListID              uuid.UUID
+	Title               string
+	Description         string
+	Status              string
+	Priority            int16
+	Position            string
+	DueDate             *time.Time
+	DueTime             pgtype.Time
+	DueTz               *string
+	Rrule               *string
+	RepeatFrom          string
+	RecurrenceDoneCount int32
+	CompletedAt         *time.Time
+	TagIds              []uuid.UUID
+	DeletedWithListID   *uuid.UUID
+	Version             int32
+	Seq                 int64
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
+	DeletedAt           *time.Time
+}
+
+type TaskCompletion struct {
+	ID                      uuid.UUID
+	TaskID                  uuid.UUID
+	Kind                    string
+	OccurrenceDueDate       *time.Time
+	CompletedAt             time.Time
+	PrevDueDate             *time.Time
+	PrevDueTime             pgtype.Time
+	PrevRecurrenceDoneCount int32
+	PrevStatus              string
+	TaskSeq                 int64
+	UndoneAt                *time.Time
 }
 
 type User struct {

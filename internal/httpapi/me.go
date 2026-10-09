@@ -5,7 +5,6 @@ import (
 	"errors"
 
 	"github.com/google/uuid"
-	"github.com/oapi-codegen/nullable"
 
 	"github.com/brusapa/brinketask/internal/account"
 )
@@ -67,20 +66,10 @@ func (s Server) PatchMe(ctx context.Context, request PatchMeRequestObject) (Patc
 func userFrom(p account.Profile) User {
 	return User{
 		Id:                 p.ID,
-		Email:              nullableString(p.Email),
-		DisplayName:        nullableString(p.DisplayName),
+		Email:              pointerToNullable(p.Email),
+		DisplayName:        pointerToNullable(p.DisplayName),
 		Timezone:           p.Timezone,
 		AllDayReminderTime: p.AllDayReminderTime,
 		InboxListId:        p.InboxListID,
 	}
-}
-
-// nullableString maps a Go nil pointer to JSON null and anything else to
-// its value. nullable.Nullable is the generated type for nullable fields;
-// it tells a null apart from an absent field.
-func nullableString(s *string) nullable.Nullable[string] {
-	if s == nil {
-		return nullable.NewNullNullable[string]()
-	}
-	return nullable.NewNullableWithValue(*s)
 }

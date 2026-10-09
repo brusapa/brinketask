@@ -4,17 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgtype"
 
-	// Time zone names are checked against the IANA database embedded in
-	// the binary, so the result does not depend on the host having
-	// /usr/share/zoneinfo.
-	_ "time/tzdata"
-
+	"github.com/brusapa/brinketask/internal/localtime"
 	"github.com/brusapa/brinketask/internal/storage/dbgen"
 )
 
@@ -22,10 +16,10 @@ import (
 var ErrNotFound = errors.New("account: user not found")
 
 // ErrInvalidTimezone means a time zone is not an IANA zone name.
-var ErrInvalidTimezone = errors.New("account: not an IANA time zone")
+var ErrInvalidTimezone = localtime.ErrInvalidZone
 
 // ErrInvalidTime means a local time is not HH:MM.
-var ErrInvalidTime = errors.New("account: not a HH:MM time")
+var ErrInvalidTime = localtime.ErrInvalidTime
 
 // Profile is what /me shows of a user.
 type Profile struct {
@@ -67,13 +61,13 @@ func (s *Service) Profile(ctx context.Context, userID uuid.UUID) (Profile, error
 func (s *Service) UpdateSettings(ctx context.Context, userID uuid.UUID, settings Settings) (Profile, error) {
 	params := dbgen.UpdateUserSettingsParams{ID: userID, Now: s.clock.Now()}
 	if settings.Timezone != nil {
-		if err := ValidateTimezone(*settings.Timezone); err != nil {
+		if err := localtime.ValidateZone(*settings.Timezone); err != nil {
 			return Profile{}, err
 		}
 		params.Timezone = settings.Timezone
 	}
 	if settings.AllDayReminderTime != nil {
-		t, err := parseLocalTime(*settings.AllDayReminderTime)
+		t, err := localtime.Parse(*settings.AllDayReminderTime)
 		if err != nil {
 			return Profile{}, err
 		}
@@ -102,38 +96,7 @@ func (s *Service) profile(ctx context.Context, q *dbgen.Queries, user dbgen.User
 		Email:              user.Email,
 		DisplayName:        user.DisplayName,
 		Timezone:           user.Timezone,
-		AllDayReminderTime: formatLocalTime(user.AllDayReminderTime),
+		AllDayReminderTime: localtime.Format(user.AllDayReminderTime),
 		InboxListID:        inboxID,
 	}, nil
-}
-
-// ValidateTimezone accepts IANA zone names such as "Europe/Madrid" or
-// "UTC". time.LoadLocation also accepts "" and "Local" (the server's own
-// zone), which are not zone names, so they are rejected first.
-func ValidateTimezone(name string) error {
-	if name == "" || name == "Local" {
-		return ErrInvalidTimezone
-	}
-	if _, err := time.LoadLocation(name); err != nil {
-		return ErrInvalidTimezone
-	}
-	return nil
-}
-
-// parseLocalTime converts "HH:MM" to PostgreSQL's time type, which pgx
-// represents as microseconds since midnight.
-func parseLocalTime(value string) (pgtype.Time, error) {
-	// time.Parse also accepts a one-digit hour ("9:00"); the round trip
-	// through Format insists on exactly HH:MM.
-	t, err := time.Parse("15:04", value)
-	if err != nil || t.Format("15:04") != value {
-		return pgtype.Time{}, ErrInvalidTime
-	}
-	micros := (int64(t.Hour())*60 + int64(t.Minute())) * int64(time.Minute/time.Microsecond)
-	return pgtype.Time{Microseconds: micros, Valid: true}, nil
-}
-
-func formatLocalTime(t pgtype.Time) string {
-	minutes := t.Microseconds / int64(time.Minute/time.Microsecond)
-	return fmt.Sprintf("%02d:%02d", minutes/60, minutes%60)
 }

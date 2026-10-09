@@ -12,42 +12,6 @@ import "context"
 // exactly the fields of problemResponse, so Go allows converting one into the
 // other with T(value).
 
-func (Server) DeleteChecklistItem(context.Context, DeleteChecklistItemRequestObject) (DeleteChecklistItemResponseObject, error) {
-	return DeleteChecklistItemdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
-}
-
-func (Server) PatchChecklistItem(context.Context, PatchChecklistItemRequestObject) (PatchChecklistItemResponseObject, error) {
-	return PatchChecklistItemdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
-}
-
-func (Server) ListCompletions(context.Context, ListCompletionsRequestObject) (ListCompletionsResponseObject, error) {
-	return ListCompletionsdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
-}
-
-func (Server) ListLists(context.Context, ListListsRequestObject) (ListListsResponseObject, error) {
-	return ListListsdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
-}
-
-func (Server) CreateList(context.Context, CreateListRequestObject) (CreateListResponseObject, error) {
-	return CreateListdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
-}
-
-func (Server) DeleteList(context.Context, DeleteListRequestObject) (DeleteListResponseObject, error) {
-	return DeleteListdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
-}
-
-func (Server) GetList(context.Context, GetListRequestObject) (GetListResponseObject, error) {
-	return GetListdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
-}
-
-func (Server) PatchList(context.Context, PatchListRequestObject) (PatchListResponseObject, error) {
-	return PatchListdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
-}
-
-func (Server) RestoreList(context.Context, RestoreListRequestObject) (RestoreListResponseObject, error) {
-	return RestoreListdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
-}
-
 func (Server) ListPushSubscriptions(context.Context, ListPushSubscriptionsRequestObject) (ListPushSubscriptionsResponseObject, error) {
 	return ListPushSubscriptionsdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
 }
@@ -76,64 +40,8 @@ func (Server) PatchReminder(context.Context, PatchReminderRequestObject) (PatchR
 	return PatchReminderdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
 }
 
-func (Server) GetChanges(context.Context, GetChangesRequestObject) (GetChangesResponseObject, error) {
-	return GetChangesdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
-}
-
-func (Server) ListTags(context.Context, ListTagsRequestObject) (ListTagsResponseObject, error) {
-	return ListTagsdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
-}
-
-func (Server) CreateTag(context.Context, CreateTagRequestObject) (CreateTagResponseObject, error) {
-	return CreateTagdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
-}
-
-func (Server) DeleteTag(context.Context, DeleteTagRequestObject) (DeleteTagResponseObject, error) {
-	return DeleteTagdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
-}
-
-func (Server) PatchTag(context.Context, PatchTagRequestObject) (PatchTagResponseObject, error) {
-	return PatchTagdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
-}
-
-func (Server) ListTasks(context.Context, ListTasksRequestObject) (ListTasksResponseObject, error) {
-	return ListTasksdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
-}
-
-func (Server) CreateTask(context.Context, CreateTaskRequestObject) (CreateTaskResponseObject, error) {
-	return CreateTaskdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
-}
-
-func (Server) DeleteTask(context.Context, DeleteTaskRequestObject) (DeleteTaskResponseObject, error) {
-	return DeleteTaskdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
-}
-
-func (Server) GetTask(context.Context, GetTaskRequestObject) (GetTaskResponseObject, error) {
-	return GetTaskdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
-}
-
-func (Server) PatchTask(context.Context, PatchTaskRequestObject) (PatchTaskResponseObject, error) {
-	return PatchTaskdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
-}
-
-func (Server) CreateChecklistItem(context.Context, CreateChecklistItemRequestObject) (CreateChecklistItemResponseObject, error) {
-	return CreateChecklistItemdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
-}
-
-func (Server) CompleteTask(context.Context, CompleteTaskRequestObject) (CompleteTaskResponseObject, error) {
-	return CompleteTaskdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
-}
-
-func (Server) ListTaskCompletions(context.Context, ListTaskCompletionsRequestObject) (ListTaskCompletionsResponseObject, error) {
-	return ListTaskCompletionsdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
-}
-
 func (Server) CreateReminder(context.Context, CreateReminderRequestObject) (CreateReminderResponseObject, error) {
 	return CreateReminderdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
-}
-
-func (Server) RestoreTask(context.Context, RestoreTaskRequestObject) (RestoreTaskResponseObject, error) {
-	return RestoreTaskdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
 }
 
 func (Server) SkipTaskOccurrence(context.Context, SkipTaskOccurrenceRequestObject) (SkipTaskOccurrenceResponseObject, error) {
@@ -142,8 +50,4 @@ func (Server) SkipTaskOccurrence(context.Context, SkipTaskOccurrenceRequestObjec
 
 func (Server) SnoozeTask(context.Context, SnoozeTaskRequestObject) (SnoozeTaskResponseObject, error) {
 	return SnoozeTaskdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
-}
-
-func (Server) UncompleteTask(context.Context, UncompleteTaskRequestObject) (UncompleteTaskResponseObject, error) {
-	return UncompleteTaskdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
 }

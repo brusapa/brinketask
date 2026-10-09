@@ -32,10 +32,11 @@ func TestSameOrigin(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Both operations are still stubs, so an allowed request gets 501.
-			path := "https://tasks.example.com/api/v1/lists"
+			// Both operations are stubs of phase 5, so an allowed request
+			// gets 501.
+			path := "https://tasks.example.com/api/v1/push/subscriptions"
 			if tt.method == http.MethodDelete {
-				path = "https://tasks.example.com/api/v1/tasks/" + someID
+				path = "https://tasks.example.com/api/v1/push/subscriptions/" + someID
 			}
 			req := newRequest(t, tt.method, path, "", "")
 			for name, value := range tt.headers {
