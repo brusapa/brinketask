@@ -342,3 +342,64 @@ func TestAdvanceIsSynced(t *testing.T) {
 		t.Errorf("items = %+v", page.ChecklistItems)
 	}
 }
+
+func (a *testApp) skip(t *testing.T, u user, taskID, completionID uuid.UUID, day string) *CompletionResult {
+	t.Helper()
+	body := fmt.Sprintf(`{"completion_id":%q,"occurrence_due_date":%q}`, completionID, day)
+	result := decode[CompletionResult](t, a.call(t, u, http.MethodPost, "/tasks/"+taskID.String()+"/skip", body), http.StatusOK)
+	return &result
+}
+
+// R-6: skipping advances like completing, with a "skipped" record that
+// counts towards COUNT and stays out of the Completed section.
+func TestSkipOccurrence(t *testing.T) {
+	a := newTestApp(t)
+	alice := a.signUp(t, "alice")
+	task := a.newRecurring(t, alice, "2026-10-08", "FREQ=DAILY;COUNT=2", "")
+	id := newID(t)
+	r := a.skip(t, alice, task.Id, id, "2026-10-08")
+	completion, _ := r.Completion.Get()
+	if !r.Applied || dueOf(t, r.Task) != "2026-10-09" || *r.Task.RecurrenceDoneCount != 1 || completion.Kind != CompletionKindSkipped {
+		t.Fatalf("skip = %+v %+v", r.Task, completion)
+	}
+	if page := a.completedSection(t, alice, ""); len(page.Items) != 0 {
+		t.Errorf("a skip shows in the Completed section: %+v", page.Items)
+	}
+
+	// D-24: the same id again changes nothing; D-10: a stale skip neither.
+	if again := a.skip(t, alice, task.Id, id, "2026-10-08"); !again.Applied || dueOf(t, again.Task) != "2026-10-09" {
+		t.Errorf("repeat = %+v", again.Task)
+	}
+	if stale := a.skip(t, alice, task.Id, newID(t), "2026-10-08"); stale.Applied {
+		t.Errorf("stale skip applied")
+	}
+
+	// Undo restores; skipping the last occurrence of the COUNT ends it.
+	a.uncomplete(t, alice, task.Id, id)
+	a.skip(t, alice, task.Id, newID(t), "2026-10-08")
+	last := a.skip(t, alice, task.Id, newID(t), "2026-10-09")
+	if last.Task.Status != TaskStatusDone {
+		t.Errorf("status after skipping the last = %s", last.Task.Status)
+	}
+	// D-62: skipping a done task is a no-op.
+	if done := a.skip(t, alice, task.Id, newID(t), "2026-10-09"); done.Applied {
+		t.Error("skip of a done task applied")
+	}
+}
+
+// D-62: only recurring, not dropped, tasks of the caller.
+func TestSkipRefusals(t *testing.T) {
+	a := newTestApp(t)
+	alice := a.signUp(t, "alice")
+	bob := a.signUp(t, "bob")
+	plain := decode[Task](t, a.call(t, alice, http.MethodPost, "/tasks", fmt.Sprintf(
+		`{"id":%q,"list_id":%q,"title":"plain","position":"a","due_date":"2026-10-08"}`, newID(t), alice.inboxID)), http.StatusCreated)
+	body := fmt.Sprintf(`{"completion_id":%q,"occurrence_due_date":"2026-10-08"}`, newID(t))
+	wantProblem(t, a.call(t, alice, http.MethodPost, "/tasks/"+plain.Id.String()+"/skip", body), http.StatusConflict, ProblemCodeConflict)
+
+	recurring := a.newRecurring(t, alice, "2026-10-08", "FREQ=DAILY", "")
+	path := "/tasks/" + recurring.Id.String()
+	wantProblem(t, a.call(t, bob, http.MethodPost, path+"/skip", body), http.StatusNotFound, ProblemCodeNotFound)
+	a.call(t, alice, http.MethodPatch, path, `{"status":"dropped"}`)
+	wantProblem(t, a.call(t, alice, http.MethodPost, path+"/skip", body), http.StatusConflict, ProblemCodeConflict)
+}

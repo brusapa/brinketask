@@ -44,10 +44,6 @@ func (Server) CreateReminder(context.Context, CreateReminderRequestObject) (Crea
 	return CreateReminderdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
 }
 
-func (Server) SkipTaskOccurrence(context.Context, SkipTaskOccurrenceRequestObject) (SkipTaskOccurrenceResponseObject, error) {
-	return SkipTaskOccurrencedefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
-}
-
 func (Server) SnoozeTask(context.Context, SnoozeTaskRequestObject) (SnoozeTaskResponseObject, error) {
 	return SnoozeTaskdefaultApplicationProblemPlusJSONResponse(notImplemented()), nil
 }

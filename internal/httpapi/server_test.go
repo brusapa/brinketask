@@ -95,10 +95,9 @@ func TestOperationsAnswerNotImplemented(t *testing.T) {
 	tests := []struct {
 		method, path, contentType, body string
 	}{
-		// Operations of later phases (reminders, recurrence, push).
+		// Operations of later phases (reminders, push).
 		{http.MethodGet, "/api/v1/push/subscriptions", "", ""},
 		{http.MethodDelete, "/api/v1/reminders/" + someID, "", ""},
-		{http.MethodPost, "/api/v1/tasks/" + someID + "/skip", jsonType, `{"completion_id":"` + someID + `"}`},
 		{http.MethodPost, "/api/v1/push/subscriptions/" + someID + "/test", "", ""},
 	}
 	for _, tt := range tests {

@@ -12,15 +12,7 @@ func (s Server) CompleteTask(ctx context.Context, request CompleteTaskRequestObj
 	if err != nil {
 		return nil, err
 	}
-	body := request.Body
-	in := tasks.CompleteInput{
-		CompletionID: body.CompletionId,
-		CompletedAt:  body.CompletedAt,
-	}
-	if date := nullableToPointer(body.OccurrenceDueDate); date != nil {
-		in.OccurrenceDueDate = dateFromAPI(date)
-	}
-	result, err := s.tasks.Complete(ctx, userID, request.Id, in)
+	result, err := s.tasks.Complete(ctx, userID, request.Id, completeInput(request.Body))
 	if problem, ok := domainProblem(err); ok {
 		return CompleteTaskdefaultApplicationProblemPlusJSONResponse(toResponse(problem)), nil
 	}
@@ -28,6 +20,23 @@ func (s Server) CompleteTask(ctx context.Context, request CompleteTaskRequestObj
 		return nil, err
 	}
 	return CompleteTask200JSONResponse(completionResultToAPI(result)), nil
+}
+
+// SkipTaskOccurrence skips the current occurrence of a recurring task
+// (R-6, D-62). It takes the same body as /complete.
+func (s Server) SkipTaskOccurrence(ctx context.Context, request SkipTaskOccurrenceRequestObject) (SkipTaskOccurrenceResponseObject, error) {
+	userID, err := callerID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	result, err := s.tasks.Skip(ctx, userID, request.Id, completeInput(request.Body))
+	if problem, ok := domainProblem(err); ok {
+		return SkipTaskOccurrencedefaultApplicationProblemPlusJSONResponse(toResponse(problem)), nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return SkipTaskOccurrence200JSONResponse(completionResultToAPI(result)), nil
 }
 
 // UncompleteTask undoes the latest completion of a task.
@@ -102,4 +111,16 @@ func (s Server) ListCompletions(ctx context.Context, request ListCompletionsRequ
 		items[i] = completionEntryToAPI(e)
 	}
 	return ListCompletions200JSONResponse{Items: items, NextCursor: pointerToNullable(next)}, nil
+}
+
+// completeInput reads the body shared by /complete and /skip.
+func completeInput(body *CompleteRequest) tasks.CompleteInput {
+	in := tasks.CompleteInput{
+		CompletionID: body.CompletionId,
+		CompletedAt:  body.CompletedAt,
+	}
+	if date := nullableToPointer(body.OccurrenceDueDate); date != nil {
+		in.OccurrenceDueDate = dateFromAPI(date)
+	}
+	return in
 }

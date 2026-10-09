@@ -69,6 +69,7 @@ func TestAuthorizationMatrix(t *testing.T) {
 		{http.MethodDelete, taskPath, ""},
 		{http.MethodPost, taskPath + "/restore", ""},
 		{http.MethodPost, taskPath + "/complete", fmt.Sprintf(`{"completion_id":%q}`, newID(t))},
+		{http.MethodPost, taskPath + "/skip", fmt.Sprintf(`{"completion_id":%q}`, newID(t))},
 		{http.MethodPost, "/tasks/" + completed.Id.String() + "/uncomplete", fmt.Sprintf(`{"completion_id":%q}`, completion)},
 		{http.MethodGet, "/tasks/" + completed.Id.String() + "/completions", ""},
 		{http.MethodPost, taskPath + "/checklist-items", newItemBody(newID(t), "x", "a")},
