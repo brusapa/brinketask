@@ -20,6 +20,11 @@ export default defineConfig({
     outDir: "dist",
     // No source maps in the embedded build: they would double its size.
     sourcemap: false,
+    // The main chunk is about 850 kB (250 kB compressed), mostly React,
+    // React Aria and its messages for every language it supports. Assets
+    // are cached for a year, so this is paid once per release; Vite's
+    // default warning (500 kB) is raised to that size on purpose.
+    chunkSizeWarningLimit: 900,
   },
   test: {
     environment: "jsdom",

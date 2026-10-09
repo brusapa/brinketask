@@ -1,16 +1,22 @@
 // The screens and their URLs. Every screen has its own path, so reloading
 // or sharing a URL shows the same thing; the open task is ?task=<id>.
+import { lazy, Suspense } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useParams, useSearchParams } from "react-router";
 import { useTranslation } from "react-i18next";
 
 import { Layout } from "./app/Layout";
 import { useNow, useProfile, useSnapshot } from "./app/services";
-import { TaskDetail } from "./components/detail/TaskDetail";
 import { SettingsView } from "./components/SettingsView";
 import { TaskListView } from "./components/TaskListView";
 import { TrashView } from "./components/TrashView";
 import { dateIn } from "./lib/dates";
 import { formatLongDay } from "./lib/format";
+
+// The detail panel brings the Markdown renderer and the calendar; it is
+// loaded on first use, so the first screen needs less JavaScript.
+const TaskDetail = lazy(async () => ({
+  default: (await import("./components/detail/TaskDetail")).TaskDetail,
+}));
 
 export function App() {
   return (
@@ -25,7 +31,15 @@ export function AppRoutes() {
     <Routes>
       <Route
         element={
-          <Layout detail={(taskId, close) => <TaskDetail taskId={taskId} onClose={close} />} />
+          <Layout
+            detail={(taskId, close) => (
+              // Nothing is shown while the panel's code loads (DESIGN.md
+              // section 6: no spinner); it takes a moment once.
+              <Suspense fallback={null}>
+                <TaskDetail taskId={taskId} onClose={close} />
+              </Suspense>
+            )}
+          />
         }
       >
         <Route index element={<InboxScreen />} />
