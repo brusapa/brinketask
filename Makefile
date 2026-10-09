@@ -14,31 +14,54 @@ SQLC_IMAGE := docker.io/sqlc/sqlc:1.31.1@sha256:70f53171d27b2424e9358869975455a6
 # The race detector needs cgo and a C compiler; set GO_TEST_FLAGS= to skip it.
 GO_TEST_FLAGS ?= -race
 
-.PHONY: all generate check-generated lint test build image dev dev-down clean
+# The web client's packages, installed exactly as package-lock.json pins them.
+# The stamp file makes Make reinstall only when the lock file changes.
+WEB_DEPS := web/node_modules/.installed
+
+$(WEB_DEPS): web/package-lock.json
+	cd web && npm ci --no-fund --no-audit
+	touch $@
+
+.PHONY: all generate check-generated lint go-lint web-lint test go-test web-test build web-build image dev dev-down clean
 
 all: lint test build
 
-generate:
+generate: $(WEB_DEPS)
 	go generate ./...
+	cd web && npm run generate
 	$(CONTAINER_ENGINE) run --rm -v "$(CURDIR):/src:z" -w /src/internal/storage $(SQLC_IMAGE) generate
 
 # Fails when generated files differ from what the generators produce, e.g.
 # after editing api/openapi.yaml without running `make generate`.
 check-generated: generate
-	git diff --exit-code -- '*.gen.go'
-	@test -z "$$(git status --porcelain -- '*.gen.go')" || \
-		{ git status --short -- '*.gen.go'; echo "generated files not committed"; exit 1; }
+	git diff --exit-code -- '*.gen.go' '*.gen.ts'
+	@test -z "$$(git status --porcelain -- '*.gen.go' '*.gen.ts')" || \
+		{ git status --short -- '*.gen.go' '*.gen.ts'; echo "generated files not committed"; exit 1; }
 
-lint:
+lint: go-lint web-lint
+
+go-lint:
 	@golangci-lint version | grep -q "version $(GOLANGCI_LINT_VERSION:v%=%) " || \
 		{ echo "golangci-lint $(GOLANGCI_LINT_VERSION) required"; exit 1; }
 	golangci-lint run ./...
 
-test:
+# ESLint (including the i18n rule), Prettier and the TypeScript compiler.
+web-lint: $(WEB_DEPS)
+	cd web && npm run lint && npm run typecheck
+
+test: go-test web-test
+
+go-test:
 	go test $(GO_TEST_FLAGS) ./...
+
+web-test: $(WEB_DEPS)
+	cd web && npm test
 
 build:
 	CGO_ENABLED=0 go build -trimpath -o bin/brinketask ./cmd/brinketask
+
+web-build: $(WEB_DEPS)
+	cd web && npm run build
 
 image:
 	$(CONTAINER_ENGINE) build -f deploy/Dockerfile -t $(IMAGE) .
@@ -56,4 +79,4 @@ dev-down:
 	$(DEV_COMPOSE) down
 
 clean:
-	rm -rf bin
+	rm -rf bin web/dist web/node_modules

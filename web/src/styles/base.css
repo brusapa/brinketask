@@ -1,0 +1,42 @@
+/* Typography of DESIGN.md section 3. "pointer: coarse" selects touch
+   devices, which get larger text and targets (DESIGN.md section 5). */
+:root {
+  font-family: "IBM Plex Sans", system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 20px;
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+@media (pointer: coarse) {
+  :root {
+    font-size: 16px;
+    line-height: 22px;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+/* Keyboard focus: a 2 px accent outline in both themes (DESIGN.md
+   section 6). React Aria sets data-focus-visible only for keyboard focus. */
+:focus-visible,
+[data-focus-visible] {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}

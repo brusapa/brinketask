@@ -1,0 +1,51 @@
+/* Colour tokens of DESIGN.md section 4. Components use only these custom
+   properties, so both themes share one set of styles. Light is the default
+   when the system states no preference. */
+:root {
+  color-scheme: light dark;
+  --color-bg: #ffffff;
+  --color-surface: #f4f5f7;
+  --color-border: #e3e6ea;
+  --color-divider: #eef0f3;
+  --color-text: #1c2024;
+  --color-text-secondary: #414a55;
+  --color-text-muted: #5b6470;
+  --color-text-completed: #6b7480;
+  --color-accent: #0f766e;
+  --color-accent-text: #0b5a54;
+  --color-selected: #ddefec;
+  --color-danger: #b42318;
+  --color-priority-high: #b42318;
+  --color-priority-medium: #b45309;
+  --color-priority-low: #1d4ed8;
+  --color-priority-none: #8a939e;
+  --color-chip-bg: #eef0f3;
+  --color-chip-text: #414a55;
+  --color-checked-fill: #6b7480;
+  --color-checked-mark: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #14171a;
+    --color-surface: #1a1e22;
+    --color-border: #2a3036;
+    --color-divider: #22272c;
+    --color-text: #e6e8eb;
+    --color-text-secondary: #c3cad2;
+    --color-text-muted: #9aa4b0;
+    --color-text-completed: #8a94a0;
+    --color-accent: #2dd4bf;
+    --color-accent-text: #99f6e4;
+    --color-selected: #1d3532;
+    --color-danger: #f97066;
+    --color-priority-high: #f97066;
+    --color-priority-medium: #fdb022;
+    --color-priority-low: #84adff;
+    --color-priority-none: #6f7985;
+    --color-chip-bg: #252b31;
+    --color-chip-text: #c3cad2;
+    --color-checked-fill: #4a535d;
+    --color-checked-mark: #e6e8eb;
+  }
+}
