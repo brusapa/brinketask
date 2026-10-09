@@ -91,6 +91,16 @@ Each decision has an identifier so it can be cited in commits and reviews.
 | D-43 | `sort=position` orders by the list's position, then the task's, then id; `sort=due` by `due_date` (no date last), all-day before timed, `due_time`, `position`, id | Lists do not interleave; deterministic order for paging |
 | D-44 | Duplicates in `tag_ids` are removed, keeping the first occurrence | Tags are a set; nothing to report |
 | D-45 | Deleting a task leaves its checklist items untouched; they come back with it. While the task is deleted, operations on its items answer 404 | Same as D-22 for the parent |
+| D-46 | Web client libraries: React Aria Components for widgets (accessible, unstyled, with localized date and time fields and keyboard-operable drag and drop) and i18next with react-i18next for messages | Section 9 asks for an established, accessible library; unstyled components take the `DESIGN.md` tokens directly |
+| D-47 | The web client computes views, overdue state and the Completed day in the profile zone (`users.timezone`), not the browser's. When the browser's zone differs, it offers to update the profile | One zone per user, the same one reminders use |
+| D-48 | "Next 7 days" shows overdue tasks first, then one section per day from today to today + 6 | Same model as Today, extended |
+| D-49 | The V1 web client does not expose `dropped`: no action sets it and no screen lists such tasks. The API keeps it | No screen in section 9 shows dropped tasks |
+| D-50 | Until their phase, the web client hides the fields and actions of later phases (Repeat, Reminders, "Skip this occurrence", reminder settings, devices) instead of showing them disabled | A disabled control with no explanation is noise |
+| D-51 | `position` values compare by code point: the server orders them with `COLLATE "C"` and the client compares strings with `<`. The client generates them with the `fractional-indexing` alphabet (`0-9A-Za-z`) | "Lexicographic" must not depend on the database locale, or client and server disagree |
+| D-52 | The web client searches its local replica (D-31): open tasks whose title or description contains the query, ignoring case and accents (Unicode NFD without combining marks). `GET /tasks?q=` stays for other clients | Instant, and no completed tasks older than today are shown (section 9) |
+| D-53 | Quick add creates a task with only a title: in a list, in that list; in Today and Next 7 days, in the inbox due today; in a tag view, in the inbox with that tag; elsewhere in the inbox. No natural-language parsing | The task appears in the view where it was typed |
+| D-54 | Scope of the Completed section: a list by `list_id`, Today by `due_to` = today, Next 7 days by `due_to` = today + 6, a tag by `tag_id`. Search and Trash have no Completed section | Section 8 asks for "the same scope as the view" |
+| D-55 | The description is edited as plain text and shown as Markdown, without raw HTML; links open in a new tab with `rel="noopener noreferrer"` | Markdown per section 4, with no HTML injection |
 
 ## 4. Data model
 
@@ -315,7 +325,7 @@ The section is fed by completion records, not by tasks with `status = done`, so 
 
 ### Search
 
-`q` parameter over title and description, case- and accent-insensitive. Implementation is free (e.g. `pg_trgm`).
+`q` parameter over title and description, case- and accent-insensitive (D-42). The web client searches its local replica instead (D-52).
 
 ## 9. Web client
 
@@ -326,7 +336,7 @@ The section is fed by completion records, not by tasks with `status = done`, so 
 - Completed tasks: a collapsed "Completed" section at the end of each list and view, shown greyed out and struck through. It lists what was completed during the current calendar day in the user's zone and empties at local midnight (section 8, "Completed section").
 - There is no view of older completed tasks: after that day they are no longer visible anywhere in the UI, search included. They stay stored and reachable through the API.
 - No keyboard shortcuts in V1. Standard keyboard operability (Tab order, Enter to submit, Escape to close the panel) is still required.
-- Components come from an established, accessible component library, chosen in phase 3; no bespoke widget set.
+- Components come from an established, accessible component library, React Aria Components (D-46); no bespoke widget set.
 - Visual reference: `DESIGN.md` (layout, metrics and colour tokens of the approved mockups).
 - Screens: inbox, list, Today, Next 7 days, tag, search, trash, settings (time zone, default reminder time, devices with notifications).
 - Task detail: every field, checklist, reminders, recurrence editor limited to the subset.
@@ -369,9 +379,9 @@ Every phase ends with green CI and is deployable.
 | 0 | Repository, CI (lint, tests, image build), development compose, migrations, code generation from OpenAPI, `/healthz` |
 | 1 | OIDC, sessions, automatic sign-up, `/me` |
 | 2 | Lists, tasks, checklist, tags: CRUD, soft delete, restore, ordering, `seq` counter, `/sync/changes`; `complete` and `uncomplete` for non-recurring tasks, `/completions` |
-| 3 | Web: navigation, lists, task detail, views, Completed section, search, trash, undo, i18n layer |
+| 3 | Web: navigation, lists, task detail, views, Completed section, search, trash, undo, i18n layer, settings (time zone, log out) |
 | 4 | Recurrence: engine, advancing on `complete`, `skip`, undo of an advance, recurring entries in the Completed section, editor in the web client |
-| 5 | Reminders: model, computation, scheduler, Web Push, service worker, actions, device settings |
+| 5 | Reminders: model, computation, scheduler, Web Push, service worker, actions, device settings, default reminder time setting, PWA manifest and icons |
 | 6 | Hardening: end-to-end tests, trash purge, metrics, deployment and backup documentation |
 
 ## 13. Suggested libraries
@@ -379,7 +389,7 @@ Every phase ends with green CI and is deployable.
 Indicative. Before adopting any, check that it is still maintained and check its licence.
 
 - Go: `chi` (routing), `oapi-codegen` (strict server from OpenAPI), `pgx` + `sqlc` (data access), `goose` (migrations), `coreos/go-oidc` + `x/oauth2` (OIDC), `webpush-go` (Web Push), `testcontainers-go` (PostgreSQL in tests).
-- Web: Vite, React, TypeScript, TanStack Query, `openapi-typescript` + `openapi-fetch`, Playwright. i18n library to be chosen in phase 3.
+- Web: Vite, React, TypeScript, TanStack Query, `openapi-typescript` + `openapi-fetch`, Playwright. React Aria Components and i18next (D-46).
 
 ## 14. Open points to verify
 

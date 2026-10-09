@@ -2,7 +2,7 @@
 # Smoke test of a built application image: starts PostgreSQL and the image
 # with the production restrictions (read-only root, no capabilities) and
 # checks that the server migrates, answers GET /healthz with 200, refuses
-# anonymous API calls and serves the login route.
+# anonymous API calls, serves the login route and serves the web client.
 # The OIDC provider is a dummy: discovery runs on the first login, not at
 # startup, and the health check does not depend on it.
 #
@@ -71,5 +71,10 @@ case "$location" in
   */?auth_error=provider_unavailable) ;;
   *) fail "GET /auth/login redirected to '$location', want /?auth_error=provider_unavailable" ;;
 esac
+
+# The web client is embedded and served with its security headers.
+headers="$(curl -s -D - -o /dev/null "http://127.0.0.1:$port/today")"
+grep -qi "^content-type: text/html" <<<"$headers" || fail "GET /today is not HTML"
+grep -qi "^content-security-policy: default-src 'self'" <<<"$headers" || fail "GET /today has no CSP"
 
 echo "smoke test passed"

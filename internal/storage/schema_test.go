@@ -57,3 +57,57 @@ func TestTagNamesAreUniquePerUser(t *testing.T) {
 		t.Errorf("name of a deleted tag not reusable: %v", err)
 	}
 }
+
+// Positions order by code point whatever the database's locale (D-51): the
+// collation is fixed on the columns.
+func TestPositionsCompareByCodePoint(t *testing.T) {
+	ctx := context.Background()
+	pool := storagetest.NewPool(t)
+
+	rows, err := pool.Query(ctx, `
+		SELECT c.relname, coll.collname
+		FROM pg_attribute a
+		JOIN pg_class c ON c.oid = a.attrelid
+		JOIN pg_collation coll ON coll.oid = a.attcollation
+		WHERE a.attname = 'position' AND c.relname IN ('lists', 'tasks', 'checklist_items')
+		ORDER BY c.relname`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for rows.Next() {
+		var table, collation string
+		if err := rows.Scan(&table, &collation); err != nil {
+			t.Fatal(err)
+		}
+		got[table] = collation
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	for _, table := range []string{"lists", "tasks", "checklist_items"} {
+		if got[table] != "C" {
+			t.Errorf("%s.position collation = %q, want C", table, got[table])
+		}
+	}
+
+	// In code point order uppercase letters come before lowercase ones; a
+	// linguistic collation would put "a0" first.
+	_, err = pool.Exec(ctx, `
+		INSERT INTO users (id, oidc_issuer, oidc_subject, created_at, updated_at)
+		VALUES ('00000000-0000-7000-8000-000000000001', 'i', 'a', now(), now());
+		INSERT INTO lists (id, owner_id, name, position, is_inbox, version, seq, created_at, updated_at) VALUES
+		  ('00000000-0000-7000-8000-0000000000b1', '00000000-0000-7000-8000-000000000001', 'x', 'a0', false, 1, 1, now(), now()),
+		  ('00000000-0000-7000-8000-0000000000b2', '00000000-0000-7000-8000-000000000001', 'y', 'Zz', false, 1, 2, now(), now()),
+		  ('00000000-0000-7000-8000-0000000000b3', '00000000-0000-7000-8000-000000000001', 'z', 'a00', false, 1, 3, now(), now())`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var order string
+	if err := pool.QueryRow(ctx, "SELECT string_agg(position, ' ' ORDER BY position) FROM lists").Scan(&order); err != nil {
+		t.Fatal(err)
+	}
+	if order != "Zz a0 a00" {
+		t.Errorf("order = %q, want %q", order, "Zz a0 a00")
+	}
+}

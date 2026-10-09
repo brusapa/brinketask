@@ -1,0 +1,177 @@
+{
+  "app": {
+    "name": "brinketask",
+    "loading": "Loading…"
+  },
+  "auth": {
+    "signIn": "Sign in",
+    "signedOut": "You are signed out.",
+    "loadFailed": "Your tasks could not be loaded.",
+    "retry": "Try again",
+    "errors": {
+      "access_denied": "Sign-in was cancelled.",
+      "login_failed": "Sign-in failed. Please try again.",
+      "provider_unavailable": "The sign-in service is not reachable. Please try again in a moment."
+    }
+  },
+  "common": {
+    "cancel": "Cancel",
+    "save": "Save",
+    "undo": "Undo",
+    "dismiss": "Dismiss",
+    "close": "Close",
+    "back": "Back",
+    "done": "Done"
+  },
+  "errors": {
+    "network": "No connection to the server. Your change was not saved.",
+    "conflict": "That change conflicts with the current state. Reload and try again.",
+    "notFound": "That item no longer exists.",
+    "invalid": "That value is not valid.",
+    "rateLimited": "Too many changes at once. Please wait a moment.",
+    "generic": "Something went wrong. Your change was not saved."
+  },
+  "nav": {
+    "main": "Main",
+    "inbox": "Inbox",
+    "today": "Today",
+    "next7": "Next 7 days",
+    "lists": "Lists",
+    "tags": "Tags",
+    "trash": "Trash",
+    "settings": "Settings",
+    "newList": "New list",
+    "openMenu": "Open menu",
+    "moveHere": "Move task here",
+    "count_one": "{{count}} open task",
+    "count_other": "{{count}} open tasks"
+  },
+  "lists": {
+    "new": "New list",
+    "edit": "Edit list",
+    "delete": "Delete list",
+    "deleted": "List deleted",
+    "name": "Name",
+    "color": "Color",
+    "actions": "Actions for {{name}}"
+  },
+  "colors": {
+    "none": "No color",
+    "teal": "Teal",
+    "green": "Green",
+    "blue": "Blue",
+    "violet": "Violet",
+    "pink": "Pink",
+    "red": "Red",
+    "orange": "Orange",
+    "slate": "Slate"
+  },
+  "tags": {
+    "rename": "Rename tag",
+    "delete": "Delete tag",
+    "deleteConfirm": "Delete the tag “{{name}}”? It is removed from every task. This cannot be undone.",
+    "name": "Name",
+    "actions": "Actions for tag {{name}}",
+    "add": "Add tag",
+    "create": "Create tag “{{name}}”",
+    "remove": "Remove tag {{name}}",
+    "noneLeft": "No more tags"
+  },
+  "views": {
+    "tasks": "Tasks",
+    "empty": "No tasks here.",
+    "noMatches": "No open tasks match."
+  },
+  "search": {
+    "title": "Search",
+    "label": "Search tasks",
+    "placeholder": "Search"
+  },
+  "sections": {
+    "overdue": "Overdue",
+    "today": "Today",
+    "tomorrow": "Tomorrow",
+    "completed": "Completed"
+  },
+  "quickAdd": {
+    "label": "Add a task",
+    "placeholder": "Add a task"
+  },
+  "priority": {
+    "none": "No priority",
+    "low": "low",
+    "medium": "medium",
+    "high": "high",
+    "edit": "Priority: {{priority}}"
+  },
+  "task": {
+    "complete": "Complete task",
+    "completeWithPriority": "Complete task, {{priority}} priority",
+    "uncomplete": "Mark “{{title}}” as not completed",
+    "completed": "Task completed",
+    "overdue": "Overdue:",
+    "checklistProgress": "{{done}} of {{total}} checklist items done",
+    "delete": "Delete task",
+    "deleted": "Task deleted"
+  },
+  "checklist": {
+    "label": "Checklist",
+    "add": "Add item",
+    "title": "Item",
+    "edit": "Edit item “{{title}}”",
+    "delete": "Delete item “{{title}}”",
+    "check": "Mark “{{title}}” as done",
+    "uncheck": "Mark “{{title}}” as not done"
+  },
+  "detail": {
+    "label": "Task details",
+    "title": "Title",
+    "description": "Description",
+    "addDescription": "Add a description",
+    "editDescription": "Edit description",
+    "list": "List",
+    "tags": "Tags",
+    "created": "Created {{date}}"
+  },
+  "due": {
+    "none": "No date",
+    "title": "Due date",
+    "edit": "Due: {{due}}",
+    "date": "Date",
+    "time": "Time",
+    "today": "Today",
+    "tomorrow": "Tomorrow",
+    "clear": "Clear",
+    "fixedZone": "Fixed time zone",
+    "zone": "Time zone",
+    "previousMonth": "Previous month",
+    "nextMonth": "Next month"
+  },
+  "priorityLabel": {
+    "none": "No priority",
+    "low": "Low",
+    "medium": "Medium",
+    "high": "High"
+  },
+  "trash": {
+    "note": "Deleted lists and tasks can be restored for 30 days.",
+    "empty": "The trash is empty.",
+    "loadFailed": "The trash could not be loaded.",
+    "restore": "Restore",
+    "restoreItem": "Restore “{{name}}”",
+    "deletedOn": "Deleted {{date}}"
+  },
+  "settings": {
+    "account": "Account",
+    "zone": "Time zone",
+    "zoneHelp": "Today, overdue tasks and the Completed section follow this zone.",
+    "zoneSaved": "Time zone set to {{zone}}",
+    "logout": "Sign out"
+  },
+  "zone": {
+    "label": "Time zone",
+    "message": "This device is set to {{device}}, but your profile uses {{profile}}.",
+    "use": "Use {{zone}}",
+    "keep": "Keep {{zone}}"
+  }
+}

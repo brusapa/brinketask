@@ -27,6 +27,8 @@ import (
 	"github.com/brusapa/brinketask/internal/session"
 	"github.com/brusapa/brinketask/internal/storage"
 	"github.com/brusapa/brinketask/internal/tasks"
+	"github.com/brusapa/brinketask/internal/webui"
+	"github.com/brusapa/brinketask/web"
 )
 
 // shutdownTimeout bounds how long in-flight requests may run after SIGTERM.
@@ -89,6 +91,11 @@ func run() error {
 	auth.NewHandler(cfg.OIDC, cfg.PublicURL, pool, clk, accounts, sessions, logger).
 		Register(mux, sameOrigin)
 	health.Register(mux, pool, logger)
+	// Last: the client answers every path no other route claims.
+	clientFiles, _ := web.Files()
+	if err := webui.Register(mux, clientFiles, logger); err != nil {
+		return err
+	}
 
 	server := &http.Server{
 		Addr:              cfg.ListenAddr,
