@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { item, list, page, task, tombstone } from "../test/fixtures";
+import { item, list, page, reminder, task, tombstone } from "../test/fixtures";
 import { Replica } from "./replica";
 
 describe("Replica", () => {
@@ -69,5 +69,28 @@ describe("Replica", () => {
     unsubscribe();
     r.putList(list({ id: "b" }));
     expect(calls).toBe(1);
+  });
+});
+
+describe("reminders in the replica", () => {
+  test("from a task response, from sync pages, and tombstones", () => {
+    const r = new Replica();
+    r.putTask(
+      task({
+        id: "t",
+        list_id: "a",
+        checklist_items: [],
+        reminders: [reminder({ id: "r1", task_id: "t" })],
+      }),
+    );
+    expect(r.getSnapshot().reminders.has("r1")).toBe(true);
+    r.applyChanges(
+      page({
+        reminders: [reminder({ id: "r2", task_id: "t", next_fire_at: "2026-10-10T07:00:00Z" })],
+      }),
+    );
+    expect(r.getSnapshot().reminders.size).toBe(2);
+    r.applyChanges(page({ reminders: [tombstone(reminder({ id: "r1", task_id: "t" }))] }));
+    expect([...r.getSnapshot().reminders.keys()]).toEqual(["r2"]);
   });
 });

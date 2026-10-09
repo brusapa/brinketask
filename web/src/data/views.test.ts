@@ -1,9 +1,16 @@
 import { describe, expect, test } from "vitest";
 
 import type { Task } from "../api/types";
-import { list, page, tag, task } from "../test/fixtures";
+import { list, page, reminder, tag, task } from "../test/fixtures";
 import { Replica } from "./replica";
-import { completedScope, counts, sections, type Context, type Section } from "./views";
+import {
+  completedScope,
+  counts,
+  sections,
+  tasksWithPendingReminders,
+  type Context,
+  type Section,
+} from "./views";
 
 const zone = "Europe/Madrid";
 // Friday 2026-10-09, 12:00 in Madrid.
@@ -167,4 +174,20 @@ describe("completedScope", () => {
   ])("%j", (view, scope) => {
     expect(completedScope(view, ctx)).toEqual(scope);
   });
+});
+
+test("tasks with a pending reminder", () => {
+  const replica = new Replica();
+  replica.replaceAll(
+    [
+      page({
+        reminders: [
+          reminder({ id: "1", task_id: "a", next_fire_at: "2026-10-10T07:00:00Z" }),
+          reminder({ id: "2", task_id: "b" }),
+        ],
+      }),
+    ],
+    "c",
+  );
+  expect([...tasksWithPendingReminders(replica.getSnapshot())]).toEqual(["a"]);
 });
