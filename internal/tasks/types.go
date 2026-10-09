@@ -35,5 +35,11 @@ const (
 	StatusDropped = "dropped"
 )
 
+// repeat_from values (SPEC section 4, R-3).
+const (
+	RepeatFromDue        = "due"
+	RepeatFromCompletion = "completion"
+)
+
 // roleOwner is the only role V1 creates.
 const roleOwner = "owner"
