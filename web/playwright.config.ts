@@ -24,11 +24,13 @@ export default defineConfig({
     // The profile's default zone, so the zone banner stays away.
     timezoneId: "Europe/Madrid",
     trace: "retain-on-failure",
-    launchOptions: {
-      // Playwright's own Chromium, or the one given (it cannot run on
-      // every Linux distribution).
-      executablePath: process.env.PLAYWRIGHT_CHROMIUM || undefined,
-    },
+    // Playwright's own Chromium, or the one given (Playwright's cannot run
+    // on every Linux distribution). The "chromium" channel is the full
+    // browser in the new headless mode; the default headless shell shows
+    // no service worker notifications.
+    ...(process.env.PLAYWRIGHT_CHROMIUM
+      ? { launchOptions: { executablePath: process.env.PLAYWRIGHT_CHROMIUM } }
+      : { channel: "chromium" }),
   },
   projects: [
     { name: "sign-in", testMatch: "sign-in.setup.ts" },

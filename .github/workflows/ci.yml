@@ -92,11 +92,12 @@ jobs:
           node-version-file: web/.node-version
 
       # The Chromium build that matches the pinned @playwright/test, with
-      # the system libraries it needs.
+      # the system libraries it needs; the full browser only, without the
+      # headless shell (see web/playwright.config.ts).
       - name: Install Playwright's Chromium
         run: |
           make web/node_modules/.installed
-          cd web && npx playwright install --with-deps chromium
+          cd web && npx playwright install --with-deps --no-shell chromium
 
       - name: End-to-end test
         run: make e2e
