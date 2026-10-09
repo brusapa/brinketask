@@ -53,6 +53,47 @@ type ListMember struct {
 	Role   string
 }
 
+type NotificationDelivery struct {
+	ID             uuid.UUID
+	ReminderID     uuid.UUID
+	FireAt         time.Time
+	SubscriptionID uuid.UUID
+	Status         string
+	Attempts       int32
+	NextAttemptAt  *time.Time
+	SentAt         *time.Time
+	Error          *string
+	CreatedAt      time.Time
+}
+
+type PushSubscription struct {
+	ID            uuid.UUID
+	UserID        uuid.UUID
+	Channel       string
+	Endpoint      string
+	P256dh        string
+	Auth          string
+	Label         *string
+	CreatedAt     time.Time
+	LastSuccessAt *time.Time
+	DisabledAt    *time.Time
+}
+
+type Reminder struct {
+	ID            uuid.UUID
+	TaskID        uuid.UUID
+	Kind          string
+	OffsetMinutes *int32
+	At            *time.Time
+	NextFireAt    *time.Time
+	LastFiredAt   *time.Time
+	Version       int32
+	Seq           int64
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+	DeletedAt     *time.Time
+}
+
 type Session struct {
 	IDHash     []byte
 	UserID     uuid.UUID

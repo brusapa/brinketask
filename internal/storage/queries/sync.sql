@@ -36,6 +36,12 @@ SELECT s.seq FROM (
     WHERE c.seq > @after
       AND (NOT @live_only::boolean OR (c.deleted_at IS NULL AND t.deleted_at IS NULL))
     UNION ALL
+    SELECT r.seq FROM reminders r
+    JOIN tasks t ON t.id = r.task_id
+    JOIN list_members m ON m.list_id = t.list_id AND m.user_id = @user_id
+    WHERE r.seq > @after
+      AND (NOT @live_only::boolean OR (r.deleted_at IS NULL AND t.deleted_at IS NULL))
+    UNION ALL
     SELECT g.seq FROM tags g
     WHERE g.owner_id = @user_id AND g.seq > @after
       AND (NOT @live_only::boolean OR g.deleted_at IS NULL)
@@ -62,6 +68,14 @@ JOIN list_members m ON m.list_id = t.list_id AND m.user_id = @user_id
 WHERE c.seq > @after AND c.seq <= @upper
   AND (NOT @live_only::boolean OR (c.deleted_at IS NULL AND t.deleted_at IS NULL))
 ORDER BY c.seq;
+
+-- name: SyncReminders :many
+SELECT r.* FROM reminders r
+JOIN tasks t ON t.id = r.task_id
+JOIN list_members m ON m.list_id = t.list_id AND m.user_id = @user_id
+WHERE r.seq > @after AND r.seq <= @upper
+  AND (NOT @live_only::boolean OR (r.deleted_at IS NULL AND t.deleted_at IS NULL))
+ORDER BY r.seq;
 
 -- name: SyncTags :many
 SELECT * FROM tags
