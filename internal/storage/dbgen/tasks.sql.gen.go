@@ -14,7 +14,7 @@ import (
 )
 
 const getTaskForUser = `-- name: GetTaskForUser :one
-SELECT t.id, t.list_id, t.title, t.description, t.status, t.priority, t.position, t.due_date, t.due_time, t.due_tz, t.rrule, t.repeat_from, t.recurrence_done_count, t.completed_at, t.tag_ids, t.deleted_with_list_id, t.version, t.seq, t.created_at, t.updated_at, t.deleted_at
+SELECT t.id, t.list_id, t.title, t.description, t.status, t.priority, t.position, t.due_date, t.due_time, t.due_tz, t.rrule, t.repeat_from, t.recurrence_done_count, t.completed_at, t.tag_ids, t.deleted_with_list_id, t.version, t.seq, t.created_at, t.updated_at, t.deleted_at, t.recurrence_start
 FROM tasks t
 JOIN list_members m ON m.list_id = t.list_id AND m.user_id = $1
 WHERE t.id = $2
@@ -51,6 +51,7 @@ func (q *Queries) GetTaskForUser(ctx context.Context, arg GetTaskForUserParams) 
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.RecurrenceStart,
 	)
 	return i, err
 }
@@ -58,28 +59,29 @@ func (q *Queries) GetTaskForUser(ctx context.Context, arg GetTaskForUserParams) 
 const insertTask = `-- name: InsertTask :exec
 INSERT INTO tasks (
     id, list_id, title, description, status, priority, position, due_date, due_time, due_tz,
-    rrule, repeat_from, tag_ids, version, seq, created_at, updated_at
+    rrule, recurrence_start, repeat_from, tag_ids, version, seq, created_at, updated_at
 ) VALUES (
     $1, $2, $3, $4, 'open', $5, $6, $7, $8, $9,
-    $10, $11, $12, 1, $13, $14, $14
+    $10, $11, $12, $13, 1, $14, $15, $15
 )
 `
 
 type InsertTaskParams struct {
-	ID          uuid.UUID
-	ListID      uuid.UUID
-	Title       string
-	Description string
-	Priority    int16
-	Position    string
-	DueDate     *time.Time
-	DueTime     pgtype.Time
-	DueTz       *string
-	Rrule       *string
-	RepeatFrom  string
-	TagIds      []uuid.UUID
-	Seq         int64
-	Now         time.Time
+	ID              uuid.UUID
+	ListID          uuid.UUID
+	Title           string
+	Description     string
+	Priority        int16
+	Position        string
+	DueDate         *time.Time
+	DueTime         pgtype.Time
+	DueTz           *string
+	Rrule           *string
+	RecurrenceStart *time.Time
+	RepeatFrom      string
+	TagIds          []uuid.UUID
+	Seq             int64
+	Now             time.Time
 }
 
 func (q *Queries) InsertTask(ctx context.Context, arg InsertTaskParams) error {
@@ -94,6 +96,7 @@ func (q *Queries) InsertTask(ctx context.Context, arg InsertTaskParams) error {
 		arg.DueTime,
 		arg.DueTz,
 		arg.Rrule,
+		arg.RecurrenceStart,
 		arg.RepeatFrom,
 		arg.TagIds,
 		arg.Seq,
@@ -151,7 +154,7 @@ func (q *Queries) LiveChecklistItemsForTasks(ctx context.Context, taskIds []uuid
 }
 
 const lockTaskForUser = `-- name: LockTaskForUser :one
-SELECT t.id, t.list_id, t.title, t.description, t.status, t.priority, t.position, t.due_date, t.due_time, t.due_tz, t.rrule, t.repeat_from, t.recurrence_done_count, t.completed_at, t.tag_ids, t.deleted_with_list_id, t.version, t.seq, t.created_at, t.updated_at, t.deleted_at
+SELECT t.id, t.list_id, t.title, t.description, t.status, t.priority, t.position, t.due_date, t.due_time, t.due_tz, t.rrule, t.repeat_from, t.recurrence_done_count, t.completed_at, t.tag_ids, t.deleted_with_list_id, t.version, t.seq, t.created_at, t.updated_at, t.deleted_at, t.recurrence_start
 FROM tasks t
 JOIN list_members m ON m.list_id = t.list_id AND m.user_id = $1
 WHERE t.id = $2
@@ -188,12 +191,13 @@ func (q *Queries) LockTaskForUser(ctx context.Context, arg LockTaskForUserParams
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.RecurrenceStart,
 	)
 	return i, err
 }
 
 const queryTasksByDue = `-- name: QueryTasksByDue :many
-SELECT t.id, t.list_id, t.title, t.description, t.status, t.priority, t.position, t.due_date, t.due_time, t.due_tz, t.rrule, t.repeat_from, t.recurrence_done_count, t.completed_at, t.tag_ids, t.deleted_with_list_id, t.version, t.seq, t.created_at, t.updated_at, t.deleted_at, l.position AS list_position
+SELECT t.id, t.list_id, t.title, t.description, t.status, t.priority, t.position, t.due_date, t.due_time, t.due_tz, t.rrule, t.repeat_from, t.recurrence_done_count, t.completed_at, t.tag_ids, t.deleted_with_list_id, t.version, t.seq, t.created_at, t.updated_at, t.deleted_at, t.recurrence_start, l.position AS list_position
 FROM tasks t
 JOIN lists l ON l.id = t.list_id
 JOIN list_members m ON m.list_id = t.list_id AND m.user_id = $1
@@ -295,6 +299,7 @@ func (q *Queries) QueryTasksByDue(ctx context.Context, arg QueryTasksByDueParams
 			&i.Task.CreatedAt,
 			&i.Task.UpdatedAt,
 			&i.Task.DeletedAt,
+			&i.Task.RecurrenceStart,
 			&i.ListPosition,
 		); err != nil {
 			return nil, err
@@ -308,7 +313,7 @@ func (q *Queries) QueryTasksByDue(ctx context.Context, arg QueryTasksByDueParams
 }
 
 const queryTasksByPosition = `-- name: QueryTasksByPosition :many
-SELECT t.id, t.list_id, t.title, t.description, t.status, t.priority, t.position, t.due_date, t.due_time, t.due_tz, t.rrule, t.repeat_from, t.recurrence_done_count, t.completed_at, t.tag_ids, t.deleted_with_list_id, t.version, t.seq, t.created_at, t.updated_at, t.deleted_at, l.position AS list_position
+SELECT t.id, t.list_id, t.title, t.description, t.status, t.priority, t.position, t.due_date, t.due_time, t.due_tz, t.rrule, t.repeat_from, t.recurrence_done_count, t.completed_at, t.tag_ids, t.deleted_with_list_id, t.version, t.seq, t.created_at, t.updated_at, t.deleted_at, t.recurrence_start, l.position AS list_position
 FROM tasks t
 JOIN lists l ON l.id = t.list_id
 JOIN list_members m ON m.list_id = t.list_id AND m.user_id = $1
@@ -404,6 +409,7 @@ func (q *Queries) QueryTasksByPosition(ctx context.Context, arg QueryTasksByPosi
 			&i.Task.CreatedAt,
 			&i.Task.UpdatedAt,
 			&i.Task.DeletedAt,
+			&i.Task.RecurrenceStart,
 			&i.ListPosition,
 		); err != nil {
 			return nil, err
@@ -431,11 +437,11 @@ const updateTask = `-- name: UpdateTask :exec
 UPDATE tasks
 SET list_id = $1, title = $2, description = $3, status = $4,
     priority = $5, position = $6, due_date = $7, due_time = $8,
-    due_tz = $9, rrule = $10, repeat_from = $11,
-    recurrence_done_count = $12, completed_at = $13,
-    tag_ids = $14, version = $15, seq = $16, updated_at = $17,
-    deleted_at = $18
-WHERE id = $19
+    due_tz = $9, rrule = $10, recurrence_start = $11, repeat_from = $12,
+    recurrence_done_count = $13, completed_at = $14,
+    tag_ids = $15, version = $16, seq = $17, updated_at = $18,
+    deleted_at = $19
+WHERE id = $20
 `
 
 type UpdateTaskParams struct {
@@ -449,6 +455,7 @@ type UpdateTaskParams struct {
 	DueTime             pgtype.Time
 	DueTz               *string
 	Rrule               *string
+	RecurrenceStart     *time.Time
 	RepeatFrom          string
 	RecurrenceDoneCount int32
 	CompletedAt         *time.Time
@@ -474,6 +481,7 @@ func (q *Queries) UpdateTask(ctx context.Context, arg UpdateTaskParams) error {
 		arg.DueTime,
 		arg.DueTz,
 		arg.Rrule,
+		arg.RecurrenceStart,
 		arg.RepeatFrom,
 		arg.RecurrenceDoneCount,
 		arg.CompletedAt,

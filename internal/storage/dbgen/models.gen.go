@@ -101,6 +101,7 @@ type Task struct {
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
 	DeletedAt           *time.Time
+	RecurrenceStart     *time.Time
 }
 
 type TaskCompletion struct {

@@ -128,6 +128,56 @@ func (q *Queries) LockChecklistItemForUser(ctx context.Context, arg LockChecklis
 	return i, err
 }
 
+const lockDoneItemIDsOfTask = `-- name: LockDoneItemIDsOfTask :many
+SELECT id FROM checklist_items
+WHERE task_id = $1 AND deleted_at IS NULL AND is_done
+ORDER BY id
+FOR UPDATE
+`
+
+// The live, ticked items of a task, locked: R-7 unticks them when a
+// recurring task advances. The caller holds the task's lock already.
+func (q *Queries) LockDoneItemIDsOfTask(ctx context.Context, taskID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, lockDoneItemIDsOfTask, taskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const uncheckItems = `-- name: UncheckItems :exec
+UPDATE checklist_items c
+SET is_done = false, version = c.version + 1, seq = v.seq, updated_at = $1
+FROM (SELECT unnest($2::uuid[]) AS id, unnest($3::bigint[]) AS seq) AS v
+WHERE c.id = v.id
+`
+
+type UncheckItemsParams struct {
+	Now  time.Time
+	Ids  []uuid.UUID
+	Seqs []int64
+}
+
+// Unticks items, each with its own new seq (D-07).
+// Two unnest calls in one SELECT list advance together, pairing ids[i]
+// with seqs[i].
+func (q *Queries) UncheckItems(ctx context.Context, arg UncheckItemsParams) error {
+	_, err := q.db.Exec(ctx, uncheckItems, arg.Now, arg.Ids, arg.Seqs)
+	return err
+}
+
 const updateChecklistItem = `-- name: UpdateChecklistItem :exec
 UPDATE checklist_items
 SET title = $1, is_done = $2, position = $3, version = $4, seq = $5,

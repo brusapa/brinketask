@@ -12,6 +12,7 @@ import type { CompletionEntry } from "../api/types";
 import { useProfile, useServices } from "../app/services";
 import { dateIn, dayBounds } from "../lib/dates";
 import { formatTime } from "../lib/format";
+import { RepeatIcon } from "./RepeatIcon";
 import { TaskCheckbox } from "./TaskCheckbox";
 
 export interface Scope {
@@ -72,6 +73,7 @@ export function CompletedSection({ scope, now }: { scope: Scope; now: Date }) {
                     label={t("task.uncomplete", { title: entry.task.title })}
                   />
                   <span className="task-title">{entry.task.title}</span>
+                  {entry.task.rrule && <RepeatIcon />}
                   <span className="task-due">
                     <time dateTime={entry.completed_at}>
                       {formatTime(new Date(entry.completed_at), zone, i18n.language)}

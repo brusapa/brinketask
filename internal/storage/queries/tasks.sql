@@ -21,10 +21,10 @@ SELECT (deleted_at IS NULL)::boolean FROM lists WHERE id = @id;
 -- name: InsertTask :exec
 INSERT INTO tasks (
     id, list_id, title, description, status, priority, position, due_date, due_time, due_tz,
-    rrule, repeat_from, tag_ids, version, seq, created_at, updated_at
+    rrule, recurrence_start, repeat_from, tag_ids, version, seq, created_at, updated_at
 ) VALUES (
     @id, @list_id, @title, @description, 'open', @priority, @position, @due_date, @due_time, @due_tz,
-    @rrule, @repeat_from, @tag_ids, 1, @seq, @now, @now
+    @rrule, @recurrence_start, @repeat_from, @tag_ids, 1, @seq, @now, @now
 );
 
 -- name: UpdateTask :exec
@@ -33,7 +33,7 @@ INSERT INTO tasks (
 UPDATE tasks
 SET list_id = @list_id, title = @title, description = @description, status = @status,
     priority = @priority, position = @position, due_date = @due_date, due_time = @due_time,
-    due_tz = @due_tz, rrule = @rrule, repeat_from = @repeat_from,
+    due_tz = @due_tz, rrule = @rrule, recurrence_start = @recurrence_start, repeat_from = @repeat_from,
     recurrence_done_count = @recurrence_done_count, completed_at = @completed_at,
     tag_ids = @tag_ids, version = @version, seq = @seq, updated_at = @updated_at,
     deleted_at = @deleted_at

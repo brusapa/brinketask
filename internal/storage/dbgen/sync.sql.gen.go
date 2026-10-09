@@ -277,7 +277,7 @@ func (q *Queries) SyncTags(ctx context.Context, arg SyncTagsParams) ([]Tag, erro
 }
 
 const syncTasks = `-- name: SyncTasks :many
-SELECT t.id, t.list_id, t.title, t.description, t.status, t.priority, t.position, t.due_date, t.due_time, t.due_tz, t.rrule, t.repeat_from, t.recurrence_done_count, t.completed_at, t.tag_ids, t.deleted_with_list_id, t.version, t.seq, t.created_at, t.updated_at, t.deleted_at FROM tasks t
+SELECT t.id, t.list_id, t.title, t.description, t.status, t.priority, t.position, t.due_date, t.due_time, t.due_tz, t.rrule, t.repeat_from, t.recurrence_done_count, t.completed_at, t.tag_ids, t.deleted_with_list_id, t.version, t.seq, t.created_at, t.updated_at, t.deleted_at, t.recurrence_start FROM tasks t
 JOIN list_members m ON m.list_id = t.list_id AND m.user_id = $1
 WHERE t.seq > $2 AND t.seq <= $3 AND (NOT $4::boolean OR t.deleted_at IS NULL)
 ORDER BY t.seq
@@ -326,6 +326,7 @@ func (q *Queries) SyncTasks(ctx context.Context, arg SyncTasksParams) ([]Task, e
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+			&i.RecurrenceStart,
 		); err != nil {
 			return nil, err
 		}

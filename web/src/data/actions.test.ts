@@ -64,12 +64,12 @@ describe("idempotent retries (D-04, D-10)", () => {
         },
       }),
     );
-    const completionId = await actions.complete("t");
+    const recorded = await actions.complete("t");
     const calls = server.calls("POST", "/tasks/t/complete");
     expect(calls.length).toBe(2);
     expect(calls[0]?.body).toEqual(calls[1]?.body);
     expect(calls[0]?.body).toMatchObject({
-      completion_id: completionId,
+      completion_id: recorded?.completionId,
       occurrence_due_date: "2026-10-09",
     });
     expect(replica.getSnapshot().tasks.get("t")?.status).toBe("done");
@@ -195,5 +195,93 @@ describe("quick add", () => {
     const body = server.calls("POST", "/tasks")[0]?.body as { position: string; due_date: string };
     expect(body.position > "a5").toBe(true);
     expect(body.due_date).toBe("2026-10-09");
+  });
+});
+
+describe("recurring tasks", () => {
+  // The client does not compute the next date (D-11): a recurring task
+  // keeps its row until the server answers with the advanced task.
+  test("completing is not optimistic and returns the advanced task", async () => {
+    const { server, replica, actions } = setup();
+    replica.putTask(
+      task({ id: "r", list_id: "inbox", due_date: "2026-10-09", rrule: "FREQ=DAILY" }),
+    );
+    let release: () => void = () => undefined;
+    const answered = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    server.on("POST", "/tasks/r/complete", async () => {
+      await answered;
+      return json({
+        applied: true,
+        task: task({
+          id: "r",
+          list_id: "inbox",
+          due_date: "2026-10-10",
+          rrule: "FREQ=DAILY",
+          version: 2,
+        }),
+      });
+    });
+    const pending = actions.complete("r");
+    await Promise.resolve();
+    expect(replica.getSnapshot().tasks.get("r")?.status).toBe("open");
+    expect(replica.getSnapshot().tasks.get("r")?.due_date).toBe("2026-10-09");
+    release();
+    const recorded = await pending;
+    expect(recorded?.task.due_date).toBe("2026-10-10");
+    expect(replica.getSnapshot().tasks.get("r")?.due_date).toBe("2026-10-10");
+  });
+
+  test("a second press while the first is in flight sends nothing", async () => {
+    const { server, replica, actions } = setup();
+    replica.putTask(
+      task({ id: "r", list_id: "inbox", due_date: "2026-10-09", rrule: "FREQ=DAILY" }),
+    );
+    server.on(
+      "POST",
+      "/tasks/r/complete",
+      json({
+        applied: true,
+        task: task({
+          id: "r",
+          list_id: "inbox",
+          due_date: "2026-10-10",
+          rrule: "FREQ=DAILY",
+          version: 2,
+        }),
+      }),
+    );
+    await Promise.all([actions.complete("r"), actions.complete("r")]);
+    expect(server.calls("POST", "/tasks/r/complete")).toHaveLength(1);
+  });
+
+  test("skip sends the occurrence seen; a task without a rule cannot be skipped", async () => {
+    const { server, replica, actions } = setup();
+    replica.putTask(
+      task({ id: "r", list_id: "inbox", due_date: "2026-10-09", rrule: "FREQ=DAILY" }),
+    );
+    replica.putTask(task({ id: "p", list_id: "inbox", due_date: "2026-10-09" }));
+    server.on(
+      "POST",
+      "/tasks/r/skip",
+      json({
+        applied: true,
+        task: task({
+          id: "r",
+          list_id: "inbox",
+          due_date: "2026-10-10",
+          rrule: "FREQ=DAILY",
+          version: 2,
+        }),
+      }),
+    );
+    const recorded = await actions.skip("r");
+    expect(server.calls("POST", "/tasks/r/skip")[0]?.body).toMatchObject({
+      completion_id: recorded?.completionId,
+      occurrence_due_date: "2026-10-09",
+    });
+    expect(await actions.skip("p")).toBeUndefined();
+    expect(server.calls("POST", "/tasks/p/skip")).toHaveLength(0);
   });
 });

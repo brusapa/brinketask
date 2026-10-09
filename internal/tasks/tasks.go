@@ -11,6 +11,7 @@ import (
 	"github.com/oapi-codegen/nullable"
 
 	"github.com/brusapa/brinketask/internal/localtime"
+	"github.com/brusapa/brinketask/internal/recurrence"
 	"github.com/brusapa/brinketask/internal/storage/dbgen"
 )
 
@@ -98,9 +99,6 @@ func (s *Service) CreateTask(ctx context.Context, userID uuid.UUID, in NewTask) 
 			if taken {
 				return conflict("the id belongs to another user's task")
 			}
-			if in.Rrule != nil {
-				return &NotImplementedError{Feature: "recurrence (rrule)"}
-			}
 			if in.HasReminders {
 				return &NotImplementedError{Feature: "reminders"}
 			}
@@ -129,7 +127,15 @@ func (s *Service) CreateTask(ctx context.Context, userID uuid.UUID, in NewTask) 
 				}
 				candidate.DueTime = parsed
 			}
+			rule, ruleFields := canonicalRule(in.Rrule)
+			fields = append(fields, ruleFields...)
+			candidate.Rrule = rule
+			if rule != nil {
+				// D-56: the series starts on the first due date.
+				candidate.RecurrenceStart = candidate.DueDate
+			}
 			fields = append(fields, checkDue(candidate)...)
+			fields = append(fields, checkRepeatMode(candidate)...)
 			fields = append(fields, checkChecklistIDs(in.Checklist)...)
 			if err := invalid(fields); err != nil {
 				return err
@@ -153,8 +159,9 @@ func (s *Service) CreateTask(ctx context.Context, userID uuid.UUID, in NewTask) 
 				ID: candidate.ID, ListID: candidate.ListID, Title: candidate.Title,
 				Description: candidate.Description, Priority: candidate.Priority, Position: candidate.Position,
 				DueDate: candidate.DueDate, DueTime: candidate.DueTime, DueTz: candidate.DueTz,
-				Rrule: candidate.Rrule, RepeatFrom: candidate.RepeatFrom, TagIds: candidate.TagIds,
-				Seq: seqs[0], Now: now,
+				Rrule: candidate.Rrule, RecurrenceStart: candidate.RecurrenceStart, RepeatFrom: candidate.RepeatFrom,
+				TagIds: candidate.TagIds,
+				Seq:    seqs[0], Now: now,
 			})
 			if err != nil {
 				return err
@@ -190,9 +197,6 @@ func (s *Service) CreateTask(ctx context.Context, userID uuid.UUID, in NewTask) 
 // with uncomplete (D-25, D-38). The result must keep the due fields
 // consistent (D-26). A patch that changes nothing writes nothing (D-41).
 func (s *Service) PatchTask(ctx context.Context, userID, id uuid.UUID, patch TaskPatch) (Task, error) {
-	if patch.Rrule.IsSpecified() && !patch.Rrule.IsNull() {
-		return Task{}, &NotImplementedError{Feature: "recurrence (rrule)"}
-	}
 	var task Task
 	err := s.inTx(ctx, func(q *dbgen.Queries) error {
 		// Lock order: lists and tags before the task.
@@ -261,8 +265,11 @@ func (s *Service) PatchTask(ctx context.Context, userID, id uuid.UUID, patch Tas
 			updated.DueTz = nullableToPointer(patch.DueTz)
 		}
 		if patch.Rrule.IsSpecified() {
-			updated.Rrule = nil // only null reaches here (D-34)
+			rule, ruleFields := canonicalRule(nullableToPointer(patch.Rrule))
+			fields = append(fields, ruleFields...)
+			updated.Rrule = rule
 		}
+		updateSeries(&updated, current)
 		if patch.Status != nil && *patch.Status != current.Status {
 			if current.Status == StatusDone {
 				return conflict("a completed task is reopened with uncomplete")
@@ -271,6 +278,7 @@ func (s *Service) PatchTask(ctx context.Context, userID, id uuid.UUID, patch Tas
 		}
 
 		fields = append(fields, checkDue(updated)...)
+		fields = append(fields, checkRepeatMode(updated)...)
 		if err := invalid(fields); err != nil {
 			return err
 		}
@@ -435,7 +443,7 @@ func (s *Service) writeTask(ctx context.Context, q *dbgen.Queries, task *dbgen.T
 		ID: task.ID, ListID: task.ListID, Title: task.Title, Description: task.Description,
 		Status: task.Status, Priority: task.Priority, Position: task.Position,
 		DueDate: task.DueDate, DueTime: task.DueTime, DueTz: task.DueTz, Rrule: task.Rrule,
-		RepeatFrom: task.RepeatFrom, RecurrenceDoneCount: task.RecurrenceDoneCount,
+		RecurrenceStart: task.RecurrenceStart, RepeatFrom: task.RepeatFrom, RecurrenceDoneCount: task.RecurrenceDoneCount,
 		CompletedAt: task.CompletedAt, TagIds: task.TagIds, Version: task.Version, Seq: task.Seq,
 		UpdatedAt: task.UpdatedAt, DeletedAt: task.DeletedAt,
 	})
@@ -490,4 +498,51 @@ func withChecklists(ctx context.Context, q *dbgen.Queries, rows []dbgen.Task) ([
 		tasks[i] = Task{Task: row, ChecklistItems: checklist}
 	}
 	return tasks, nil
+}
+
+// canonicalRule parses a rule of the subset (SPEC section 5) and returns it
+// in canonical form (D-59), or a field error when it is outside the subset.
+// nil stays nil: no recurrence.
+func canonicalRule(text *string) (*string, []FieldError) {
+	if text == nil {
+		return nil, nil
+	}
+	rule, err := recurrence.Parse(*text)
+	if err != nil {
+		return text, []FieldError{{Field: "/rrule", Message: err.Error()}}
+	}
+	canonical := rule.String()
+	return &canonical, nil
+}
+
+// checkRepeatMode enforces R-3: counting from the completion date takes
+// neither BYDAY nor BYMONTHDAY. The rule is in canonical form or already
+// reported invalid.
+func checkRepeatMode(t dbgen.Task) []FieldError {
+	if t.Rrule == nil || t.RepeatFrom != RepeatFromCompletion {
+		return nil
+	}
+	rule, err := recurrence.Parse(*t.Rrule)
+	if err == nil && rule.HasByParts() {
+		return []FieldError{{Field: "/repeat_from", Message: "repeating from the completion date takes neither BYDAY nor BYMONTHDAY"}}
+	}
+	return nil
+}
+
+// updateSeries keeps the series state of a patched task in step:
+//   - a new rule or repeat mode is a new series, so its count starts again
+//     (D-58);
+//   - the series starts on the due date whenever the rule, the mode or the
+//     date changes (D-56); without a rule there is no series start.
+func updateSeries(updated *dbgen.Task, current dbgen.Task) {
+	ruleChanged := !equalPointers(updated.Rrule, current.Rrule) || updated.RepeatFrom != current.RepeatFrom
+	if ruleChanged {
+		updated.RecurrenceDoneCount = 0
+	}
+	switch {
+	case updated.Rrule == nil:
+		updated.RecurrenceStart = nil
+	case ruleChanged || !equalDates(updated.DueDate, current.DueDate) || updated.RecurrenceStart == nil:
+		updated.RecurrenceStart = updated.DueDate
+	}
 }

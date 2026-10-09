@@ -12,7 +12,8 @@ export interface Recorded {
   contentType: string | null;
 }
 
-type Reply = Response | Error | ((request: Recorded) => Response | Error);
+type Reply =
+  Response | Error | ((request: Recorded) => Response | Error | Promise<Response | Error>);
 
 export const origin = "http://app.test";
 
@@ -67,7 +68,7 @@ export class FakeServer {
       return problem(404, "not_found");
     }
     const reply = route.replies.length > 1 ? route.replies.shift() : route.replies[0];
-    const value = typeof reply === "function" ? reply(recorded) : reply;
+    const value = typeof reply === "function" ? await reply(recorded) : reply;
     if (value instanceof Error) {
       throw value;
     }

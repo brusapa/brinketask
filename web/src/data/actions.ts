@@ -9,7 +9,7 @@
 // reordering, ticking checklist items, editing fields); creations wait for
 // the server, which answers in milliseconds.
 import { mergePatch, unwrap, withRetry, type Api } from "../api/client";
-import type { ChecklistItemPatch, ListPatch, TagPatch, TaskPatch } from "../api/types";
+import type { ChecklistItemPatch, ListPatch, TagPatch, Task, TaskPatch } from "../api/types";
 import type { Clock } from "../lib/clock";
 import { dateIn } from "../lib/dates";
 import { uuidv7 } from "../lib/ids";
@@ -36,6 +36,12 @@ export interface NewTask {
   listId: string;
   dueDate?: string | undefined;
   tagIds?: string[] | undefined;
+}
+
+/** A recorded completion or skip: its id, for undo, and the task after it. */
+export interface Recorded {
+  completionId: string;
+  task: Task;
 }
 
 /** The outcome of a write: whether it succeeded and what it returned. */
@@ -249,34 +255,67 @@ export class Actions {
     return true;
   }
 
+  /** Tasks with a completion or skip in flight; a second press waits. */
+  private recording = new Set<string>();
+
   /**
-   * Completes a task and returns the completion id the undo toast needs.
-   * The id is generated once and reused by retries, so a retry after a lost
-   * response cannot complete twice (D-24). occurrence_due_date is the date
-   * the user saw (D-10).
+   * Completes a task. Returns the completion id the undo toast needs and the
+   * task as the server left it: done, or for a recurring task moved to its
+   * next occurrence. The id is generated once and reused by retries, so a
+   * retry after a lost response cannot complete twice (D-24);
+   * occurrence_due_date is the date the user saw (D-10).
    */
-  async complete(id: string): Promise<string | undefined> {
+  complete(id: string): Promise<Recorded | undefined> {
+    return this.record(id, "complete");
+  }
+
+  /** Skips the current occurrence of a recurring task (R-6). */
+  skip(id: string): Promise<Recorded | undefined> {
+    return this.record(id, "skip");
+  }
+
+  private async record(id: string, action: "complete" | "skip"): Promise<Recorded | undefined> {
     const before = this.replica.getSnapshot().tasks.get(id);
-    if (!before || before.status !== "open") return undefined;
-    const body = {
-      completion_id: uuidv7(this.o.clock),
-      occurrence_due_date: before.due_date ?? null,
-    };
-    this.replica.setLocally("tasks", {
-      ...before,
-      status: "done",
-      completed_at: this.o.clock.now().toISOString(),
-    });
-    const result = await this.attempt(
-      () => unwrap(() => this.api.POST("/tasks/{id}/complete", { params: { path: { id } }, body })),
-      () => {
-        this.replica.setLocally("tasks", before);
-      },
-    );
-    if (!result.ok) return undefined;
-    this.replica.putTask(result.value.task);
-    this.o.onCompletionsChanged();
-    return result.value.applied ? body.completion_id : undefined;
+    if (!before || before.status !== "open" || this.recording.has(id)) return undefined;
+    const recurring = before.rrule !== null && before.rrule !== undefined;
+    if (action === "skip" && !recurring) return undefined;
+    this.recording.add(id);
+    try {
+      const body = {
+        completion_id: uuidv7(this.o.clock),
+        occurrence_due_date: before.due_date ?? null,
+      };
+      // A task without a rule simply becomes done, so the screen can show
+      // that at once. A recurring one moves to a date only the server
+      // computes (D-11): its row waits for the answer.
+      if (!recurring) {
+        this.replica.setLocally("tasks", {
+          ...before,
+          status: "done",
+          completed_at: this.o.clock.now().toISOString(),
+        });
+      }
+      const params = { params: { path: { id } }, body };
+      const result = await this.attempt(
+        () =>
+          unwrap(() =>
+            action === "complete"
+              ? this.api.POST("/tasks/{id}/complete", params)
+              : this.api.POST("/tasks/{id}/skip", params),
+          ),
+        () => {
+          this.replica.setLocally("tasks", before);
+        },
+      );
+      if (!result.ok) return undefined;
+      this.replica.putTask(result.value.task);
+      this.o.onCompletionsChanged();
+      return result.value.applied
+        ? { completionId: body.completion_id, task: result.value.task }
+        : undefined;
+    } finally {
+      this.recording.delete(id);
+    }
   }
 
   /** Undoes a completion (D-25); only the latest one can be undone. */
