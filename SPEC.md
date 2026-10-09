@@ -79,7 +79,7 @@ Each decision has an identifier so it can be cited in commits and reviews.
 | D-31 | The web client keeps a full local replica built from `/sync/changes`; views and sidebar counts are computed on the client | Same model offline work will need; no count endpoints |
 | D-32 | Web Push: registering an endpoint that belongs to another user reassigns it to the caller; deleting a subscription is a hard delete (it is not syncable). `snooze` with a past `until` answers 422; a `snooze` reminder becomes a tombstone after it fires. The test notification is sent directly, without a delivery row | The browser belongs to whoever is signed in; fired snoozes do not pile up |
 | D-33 | `/sync/changes` does not carry completions, the profile or push subscriptions in V1 | Not needed online; revisit for offline work |
-| D-34 | Until their phase, a task request with a non-null `rrule` (phase 4) or non-empty `reminders` (phase 5) answers 501 `not_implemented`; `Task.reminders` is always empty | A recurring task stored before the engine exists would complete as if it were not recurring |
+| D-34 | Until their phase, a task request with a non-null `rrule` (phase 4) or non-empty `reminders` (phase 5) answers 501 `not_implemented`; `Task.reminders` is always empty. Phase 4 lifts it for `rrule` | A recurring task stored before the engine exists would complete as if it were not recurring |
 | D-35 | A reference in a request body to a list that is unknown, deleted or someone else's (`list_id` of a task) answers 422 `validation_failed` on that field, like `tag_ids` (D-27). 404 is for the resource in the URL | The body is invalid; the addressed resource exists |
 | D-36 | `list_id` or `tag_id` filters naming something that is not the caller's, or that is deleted, answer 404 | Same as addressing it |
 | D-37 | `complete` on a `done` task is a no-op (`applied: false`); on a `dropped` task it answers 409 | A done task behaves like a stale occurrence; a dropped one must be reopened first |
@@ -101,6 +101,13 @@ Each decision has an identifier so it can be cited in commits and reviews.
 | D-53 | Quick add creates a task with only a title: in a list, in that list; in Today and Next 7 days, in the inbox due today; in a tag view, in the inbox with that tag; elsewhere in the inbox. No natural-language parsing | The task appears in the view where it was typed |
 | D-54 | Scope of the Completed section: a list by `list_id`, Today by `due_to` = today, Next 7 days by `due_to` = today + 6, a tag by `tag_id`. Search and Trash have no Completed section | Section 8 asks for "the same scope as the view" |
 | D-55 | The description is edited as plain text and shown as Markdown, without raw HTML; links open in a new tab with `rel="noopener noreferrer"` | Markdown per section 4, with no HTML injection |
+| D-56 | The server keeps the start of the series (`DTSTART`) in an internal column, `recurrence_start`, not exposed by the API. It is set to the due date when a task is created with a rule, and whenever `rrule`, `repeat_from` or `due_date` change through `PATCH`; advancing the task does not change it | R-1 keeps the desired day (the 31st, the 29th of February), which the current due date loses after an adjustment |
+| D-57 | Occurrences that R-2 discards do not count towards `COUNT`: `recurrence_done_count` counts only occurrences the user completed or skipped | Section 4 defines the counter that way |
+| D-58 | Changing `rrule` or `repeat_from` resets `recurrence_done_count` to 0; moving the due date does not | A new rule is a new series; moving one occurrence is not |
+| D-59 | `UNTIL` accepts only the date form (`UNTIL=20261231`) and is inclusive; the date-time form answers 422. The server stores rules in a canonical form: parts in the order FREQ, INTERVAL, BYDAY, BYMONTHDAY, COUNT, UNTIL, upper case, days Monday first, `INTERVAL=1` omitted | Dates only, like the rest of the subset; one spelling per rule |
+| D-60 | `uncomplete` does not set back the checklist items that R-7 unchecked, as it does not restore the reminders R-8 deleted | Restoring them would need the state of every item in the completion record |
+| D-61 | R-3 applies as written even when a backdated `completed_at` makes the next date fall in the past. R-2's "not earlier than today" compares dates: an occurrence due today at a time already past stays today | Literal rules; the user chose the completion date |
+| D-62 | `skip` behaves like `complete` for a task's state: on a `done` task it is a no-op (`applied: false`), on a `dropped` task 409, on a non-recurring task 409 | Same rules as D-37, plus the contract's 409 |
 
 ## 4. Data model
 
@@ -218,7 +225,7 @@ A single row holding the global `seq` counter (D-07) and `purged_up_to_seq`, the
 | `BYMONTHDAY` | Only with `MONTHLY`; a single value 1–31 or `-1` (last day) |
 | `COUNT` or `UNTIL` | Optional and mutually exclusive |
 
-Any other part is rejected with 422. The start of the series (`DTSTART`) is the task's current due date; it is not stored in the string.
+Any other part is rejected with 422. The start of the series (`DTSTART`) is not stored in the string: it is the due date when the rule was last set (D-56).
 
 ### Rules
 
