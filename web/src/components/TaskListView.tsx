@@ -18,7 +18,13 @@ import { useSearchParams } from "react-router";
 
 import { useNow, useProfile, useServices, useSnapshot } from "../app/services";
 import type { Snapshot, TaskRow as Row } from "../data/replica";
-import { completedScope, sections, type Section, type View } from "../data/views";
+import {
+  completedScope,
+  sections,
+  tasksWithPendingReminders,
+  type Section,
+  type View,
+} from "../data/views";
 import { dateIn } from "../lib/dates";
 import { formatDay } from "../lib/format";
 import { positionForMove } from "../lib/positions";
@@ -46,6 +52,7 @@ export function TaskListView({
   const result = sections(view, ctx);
   const scope = completedScope(view, ctx);
   const progress = useMemo(() => checklistProgress(snapshot), [snapshot]);
+  const withReminders = useMemo(() => tasksWithPendingReminders(snapshot), [snapshot]);
   const showList = view.kind !== "list";
   const isEmpty = result.every((s) => s.tasks.length === 0);
 
@@ -72,6 +79,7 @@ export function TaskListView({
             now={now}
             showList={showList}
             progress={progress}
+            withReminders={withReminders}
           />
         );
       })}
@@ -122,6 +130,7 @@ function TaskSection({
   now,
   showList,
   progress,
+  withReminders,
 }: {
   heading: string | undefined;
   danger: boolean;
@@ -131,6 +140,7 @@ function TaskSection({
   now: Date;
   showList: boolean;
   progress: Map<string, { done: number; total: number }>;
+  withReminders: ReadonlySet<string>;
 }) {
   const { t } = useTranslation();
   const { actions } = useServices();
@@ -201,6 +211,7 @@ function TaskSection({
               now={now}
               showList={showList}
               progress={progress.get(task.id)}
+              hasReminder={withReminders.has(task.id)}
             />
           )}
         </GridList>

@@ -137,7 +137,8 @@
     "list": "List",
     "tags": "Tags",
     "created": "Created {{date}}",
-    "repeat": "Repeat"
+    "repeat": "Repeat",
+    "reminders": "Reminders"
   },
   "due": {
     "none": "No date",
@@ -278,5 +279,25 @@
     "removeDevice": "Remove {{label}}",
     "testDevice": "Send a test to {{label}}",
     "failed": "Notifications could not be turned on."
+  },
+  "reminders": {
+    "add": "Add reminder",
+    "custom": "At a date and time…",
+    "atDue": "At the due time",
+    "onTheDay": "On the day at {{time}}",
+    "minutesBefore_one": "{{count}} minute before",
+    "minutesBefore_other": "{{count}} minutes before",
+    "hoursBefore_one": "{{count}} hour before",
+    "hoursBefore_other": "{{count}} hours before",
+    "daysBefore_one": "{{count}} day before",
+    "daysBefore_other": "{{count}} days before",
+    "at": "{{day}} at {{time}}",
+    "snoozedUntil": "Snoozed until {{when}}",
+    "remove": "Remove reminder: {{reminder}}",
+    "snooze": "Snooze",
+    "in10": "10 minutes",
+    "in60": "1 hour",
+    "tomorrow": "Tomorrow at {{time}}",
+    "pending": "Has a reminder"
   }
 }

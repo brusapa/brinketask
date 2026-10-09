@@ -1536,3 +1536,36 @@ textarea.input {
 .device .view-note {
   margin: 0;
 }
+
+/* ---- Reminders (detail) -------------------------------------------------- */
+
+.reminders-field {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 6px 0;
+}
+
+.reminder-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.reminder {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+/* Nothing pending: past, or the task is done. */
+.reminder-idle {
+  color: var(--color-text-muted);
+  text-decoration: line-through;
+}

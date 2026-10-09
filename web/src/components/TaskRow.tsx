@@ -1,4 +1,5 @@
 // One open task in a list (DESIGN.md section 5, "Task row content").
+import { Bell } from "lucide-react";
 import { GridListItem } from "react-aria-components";
 
 import { RepeatIcon } from "./RepeatIcon";
@@ -21,12 +22,15 @@ export function TaskRow({
   now,
   showList,
   progress,
+  hasReminder,
 }: {
   task: Row;
   today: CalendarDate;
   now: Date;
   /** In views that mix lists (Today, Next 7 days, tag, search). */
   showList: boolean;
+  /** Whether a reminder of the task is still to fire. */
+  hasReminder: boolean;
   /** Checklist items done and in total, when the task has a checklist. */
   progress: { done: number; total: number } | undefined;
 }) {
@@ -72,6 +76,11 @@ export function TaskRow({
           </span>
         )}
         {task.rrule && <RepeatIcon />}
+        {hasReminder && (
+          <span className="repeat-icon" role="img" aria-label={t("reminders.pending")}>
+            <Bell size={14} strokeWidth={1.5} aria-hidden="true" />
+          </span>
+        )}
         {tags.map((tag) => (
           <span key={tag.id} className="chip">
             {tag.name}
