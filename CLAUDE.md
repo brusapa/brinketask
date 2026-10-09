@@ -40,7 +40,8 @@ Read them before any change. If a task requires departing from them, **stop and 
 /internal       domain, storage, http, scheduler, notifications
 /migrations     SQL
 /web            React client
-/deploy         Dockerfile and compose
+/deploy         Dockerfile, compose files and the test scripts
+/docs           deployment and backup guides
 SPEC.md
 DESIGN.md
 CLAUDE.md

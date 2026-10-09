@@ -1,6 +1,6 @@
 # Development environment: PostgreSQL, a Pocket ID to log in against, and
-# the application built from deploy/Dockerfile. Not for production (phase 6
-# documents deployment).
+# the application built from deploy/Dockerfile. Not for production: see
+# docs/deployment.md and compose.example.yaml.
 #
 #   make dev        start everything; prints a one-time login link
 #   make dev-down   stop it; the volumes are kept
