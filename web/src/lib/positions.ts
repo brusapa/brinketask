@@ -25,6 +25,12 @@ export function comparePositions(
  * covers any string.
  */
 export function positionBetween(before: string | null, after: string | null): string {
+  if (before !== null && after !== null && before >= after) {
+    // Equal neighbours (two clients picked the same string) leave no room
+    // between them; the server orders such ties by id. Going just after
+    // "before" is the closest valid place.
+    return positionBetween(before, null);
+  }
   try {
     return generateKeyBetween(before, after);
   } catch {

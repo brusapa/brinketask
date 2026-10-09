@@ -5,12 +5,15 @@ import "@fontsource/ibm-plex-sans/latin-500.css";
 import "@fontsource/ibm-plex-sans/latin-600.css";
 import "./styles/tokens.css";
 import "./styles/base.css";
+import "./styles/app.css";
 import "./i18n";
 
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { App } from "./App";
+import { Root } from "./app/Root";
+import { systemClock } from "./lib/clock";
 
 const root = document.getElementById("root");
 if (root === null) {
@@ -18,6 +21,17 @@ if (root === null) {
 }
 createRoot(root).render(
   <StrictMode>
-    <App />
+    <Root
+      env={{
+        origin: window.location.origin,
+        search: window.location.search,
+        clock: systemClock,
+        leave: (path) => {
+          window.location.assign(path);
+        },
+      }}
+    >
+      <App />
+    </Root>
   </StrictMode>,
 );

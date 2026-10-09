@@ -89,3 +89,7 @@ describe("search", () => {
     expect(matcher("  ")("anything", "")).toBe(false);
   });
 });
+
+test("equal neighbours still give a position after the first", () => {
+  expect(positionBetween("a1", "a1") > "a1").toBe(true);
+});

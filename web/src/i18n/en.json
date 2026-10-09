@@ -2,5 +2,108 @@
   "app": {
     "name": "brinketask",
     "loading": "Loading…"
+  },
+  "auth": {
+    "signIn": "Sign in",
+    "signedOut": "You are signed out.",
+    "loadFailed": "Your tasks could not be loaded.",
+    "retry": "Try again",
+    "errors": {
+      "access_denied": "Sign-in was cancelled.",
+      "login_failed": "Sign-in failed. Please try again.",
+      "provider_unavailable": "The sign-in service is not reachable. Please try again in a moment."
+    }
+  },
+  "common": {
+    "cancel": "Cancel",
+    "save": "Save",
+    "undo": "Undo",
+    "dismiss": "Dismiss",
+    "close": "Close",
+    "back": "Back"
+  },
+  "errors": {
+    "network": "No connection to the server. Your change was not saved.",
+    "conflict": "That change conflicts with the current state. Reload and try again.",
+    "notFound": "That item no longer exists.",
+    "invalid": "That value is not valid.",
+    "rateLimited": "Too many changes at once. Please wait a moment.",
+    "generic": "Something went wrong. Your change was not saved."
+  },
+  "nav": {
+    "main": "Main",
+    "inbox": "Inbox",
+    "today": "Today",
+    "next7": "Next 7 days",
+    "lists": "Lists",
+    "tags": "Tags",
+    "trash": "Trash",
+    "settings": "Settings",
+    "newList": "New list",
+    "openMenu": "Open menu",
+    "moveHere": "Move task here",
+    "count_one": "{{count}} open task",
+    "count_other": "{{count}} open tasks"
+  },
+  "lists": {
+    "new": "New list",
+    "edit": "Edit list",
+    "delete": "Delete list",
+    "deleted": "List deleted",
+    "name": "Name",
+    "color": "Color",
+    "actions": "Actions for {{name}}"
+  },
+  "colors": {
+    "none": "No color",
+    "teal": "Teal",
+    "green": "Green",
+    "blue": "Blue",
+    "violet": "Violet",
+    "pink": "Pink",
+    "red": "Red",
+    "orange": "Orange",
+    "slate": "Slate"
+  },
+  "tags": {
+    "rename": "Rename tag",
+    "delete": "Delete tag",
+    "deleteConfirm": "Delete the tag “{{name}}”? It is removed from every task. This cannot be undone.",
+    "name": "Name",
+    "actions": "Actions for tag {{name}}"
+  },
+  "views": {
+    "tasks": "Tasks",
+    "empty": "No tasks here.",
+    "noMatches": "No open tasks match."
+  },
+  "search": {
+    "title": "Search",
+    "label": "Search tasks",
+    "placeholder": "Search"
+  },
+  "sections": {
+    "overdue": "Overdue",
+    "today": "Today",
+    "tomorrow": "Tomorrow",
+    "completed": "Completed"
+  },
+  "quickAdd": {
+    "label": "Add a task",
+    "placeholder": "Add a task"
+  },
+  "priority": {
+    "none": "No priority",
+    "low": "low",
+    "medium": "medium",
+    "high": "high"
+  },
+  "task": {
+    "complete": "Complete task",
+    "completeWithPriority": "Complete task, {{priority}} priority",
+    "uncomplete": "Mark “{{title}}” as not completed",
+    "completed": "Task completed",
+    "overdue": "Overdue:",
+    "checklistProgress": "{{done}} of {{total}} checklist items done"
   }
 }

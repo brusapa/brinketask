@@ -36,6 +36,8 @@ export default defineConfig(
       // `const { a, ...rest } = x` is how JavaScript copies an object
       // without some fields; the dropped fields are unused by design.
       "@typescript-eslint/no-unused-vars": ["error", { ignoreRestSiblings: true }],
+      // `onPress={() => close()}` is the usual React idiom for handlers.
+      "@typescript-eslint/no-confusing-void-expression": ["error", { ignoreArrowShorthand: true }],
       // Template literals with numbers are common for CSS values and ids.
       "@typescript-eslint/restrict-template-expressions": ["error", { allowNumber: true }],
     },

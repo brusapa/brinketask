@@ -37,7 +37,7 @@ export class FakeServer {
   api(): Api {
     return createApi({
       origin,
-      fetch: (request) => this.handle(request),
+      fetch: (request) => this.handleRequest(request),
       onUnauthenticated: () => {
         this.unauthenticated++;
       },
@@ -49,7 +49,8 @@ export class FakeServer {
     return this.requests.filter((r) => r.method === method && r.path === path);
   }
 
-  private async handle(request: Request): Promise<Response> {
+  /** Answers one request; also usable as a fetch function. */
+  async handleRequest(request: Request): Promise<Response> {
     const url = new URL(request.url);
     const path = url.pathname.replace(/^\/api\/v1/, "");
     const text = await request.text();
