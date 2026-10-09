@@ -8,7 +8,8 @@ and the server must be reachable over https, which a reverse proxy in
 front of it provides.
 
 `deploy/compose.example.yaml`, `deploy/brinketask.env.example` and
-`deploy/db.env.example` are a working starting point for one host.
+`deploy/db.env.example` are a working starting point for one host. On
+NixOS, use the module of section 10 instead.
 
 ## 1. Build the image
 
@@ -27,7 +28,7 @@ example does.
 
 ## 2. PostgreSQL
 
-PostgreSQL 18 (the version tests run against). Give brinketask its own
+PostgreSQL 18 or later: the schema uses `uuidv7()`, new in 18. Give brinketask its own
 database, owned by its user: at startup the server applies the pending
 migrations, and the first one creates the `unaccent` extension, which the
 owner of a database may do.
@@ -196,3 +197,96 @@ step 1 and set the older tag again.
 Several replicas of the server can share one database: reminders are
 claimed so that each is sent once, and only one replica purges at a
 time. The rate limit is kept per replica.
+
+## 10. NixOS
+
+On NixOS the repository's flake replaces sections 1, 2 and 7: it builds
+brinketask from source and runs it as a systemd service, with
+PostgreSQL on the same host if you want (D-74). Sections 3 (the OIDC
+client), 4 (the VAPID keys), 6 (the reverse proxy) and 8 (monitoring)
+still apply.
+
+Add the flake to the system's flake:
+
+```nix
+{
+  inputs.brinketask.url = "github:brusapa/brinketask";
+
+  outputs = { nixpkgs, brinketask, ... }: {
+    nixosConfigurations.myhost = nixpkgs.lib.nixosSystem {
+      modules = [
+        brinketask.nixosModules.default
+        ./configuration.nix
+      ];
+    };
+  };
+}
+```
+
+Make the VAPID key pair once, put the private key, alone, in a file only
+root can read, and keep the public key for the configuration:
+
+```sh
+nix run github:brusapa/brinketask -- vapid-keys
+```
+
+Then, in `configuration.nix`:
+
+```nix
+{ pkgs, ... }:
+{
+  services.brinketask = {
+    enable = true;
+    publicUrl = "https://tasks.example.com";
+    oidc = {
+      issuer = "https://id.example.com";
+      clientId = "…";
+      clientSecretFile = "/run/secrets/brinketask-oidc-client-secret";
+    };
+    vapid = {
+      publicKey = "…";
+      privateKeyFile = "/run/secrets/brinketask-vapid-private-key";
+      subject = "mailto:admin@example.com";
+    };
+  };
+
+  # brinketask needs PostgreSQL 18 or later. On a host whose PostgreSQL
+  # already holds data of an older major version, upgrade that cluster
+  # first (NixOS manual, "PostgreSQL", "Upgrading").
+  services.postgresql.package = pkgs.postgresql_18;
+
+  services.caddy = {
+    enable = true;
+    virtualHosts."tasks.example.com".extraConfig = ''
+      reverse_proxy 127.0.0.1:8080
+    '';
+  };
+}
+```
+
+What the module does:
+
+- `database.createLocally` (on by default) enables `services.postgresql`
+  with a database and a user, both named `brinketask`, the user owning
+  the database. The service connects through the Unix socket with peer
+  authentication; there is no database password. For a database
+  elsewhere, turn it off and set `databaseUrlFile`.
+- The secret files (`oidc.clientSecretFile`, `vapid.privateKeyFile`,
+  `databaseUrlFile`) are handed to the service as systemd credentials and
+  read through the `*_FILE` variables; they never enter the Nix store.
+  Any secret manager that leaves files under `/run`, such as sops-nix or
+  agenix, works.
+- The application listens on `127.0.0.1:8080` and the metrics on
+  `127.0.0.1:9090` (`listenAddress`, `metricsListenAddress`).
+  `openFirewall` opens the application port, which you need only without
+  a reverse proxy on the same host.
+- `settings` takes the other variables of section 5, such as
+  `SESSION_IDLE_TIMEOUT`. They are stored in the Nix store, so never put
+  secrets there.
+- The service runs as a throwaway user with no capabilities and a
+  read-only view of the system, the equivalent of the container's
+  restrictions.
+
+Upgrading is updating the flake input (`nix flake update brinketask`)
+and rebuilding; back up the database first, as in section 9. Logs go to
+the journal: `journalctl -u brinketask`.
