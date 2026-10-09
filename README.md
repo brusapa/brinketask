@@ -23,8 +23,10 @@ possible by the design (`SPEC.md` section 1).
 
 ## Running it
 
-You need a container engine (Podman or Docker), a domain with https in
-front of the server, and a Pocket ID instance. In short:
+You need a domain with https in front of the server and a Pocket ID
+instance. On NixOS, the flake's module runs it as a service; see
+[`docs/deployment.md`](docs/deployment.md), section "NixOS".
+Elsewhere, with a container engine (Podman or Docker), in short:
 
 ```sh
 podman build -f deploy/Dockerfile -t localhost/brinketask:<version> .
@@ -61,6 +63,7 @@ changing the code, every command and how to run the server on the host.
 | `migrations/` | SQL migrations, applied at startup |
 | `web/` | The React web client, embedded in the server binary |
 | `deploy/` | Dockerfile, compose files and the test scripts |
+| `flake.nix`, `nix/` | The Nix package, the NixOS module and its test |
 | `docs/` | Deployment and backup guides |
 
 ## Documents

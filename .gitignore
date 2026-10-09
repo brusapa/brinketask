@@ -13,3 +13,6 @@
 .vscode/
 *.swp
 .DS_Store
+
+# nix build output
+/result

@@ -41,6 +41,7 @@ Read them before any change. If a task requires departing from them, **stop and 
 /migrations     SQL
 /web            React client
 /deploy         Dockerfile, compose files and the test scripts
+/nix            Nix package, NixOS module and its test (flake.nix at the root)
 /docs           deployment and backup guides
 SPEC.md
 DESIGN.md
@@ -64,6 +65,7 @@ Tool versions: Go 1.27.1, golangci-lint v2.14.0, Node 24.21.0 (`web/.node-versio
 | `go run ./cmd/brinketask vapid-keys` | Prints a new VAPID key pair for Web Push (D-68) |
 | `deploy/dev-oidc-setup.sh` | Run by `make dev`: creates the Pocket ID user `dev` and the OIDC client `brinketask-dev`, writes the client secret and a VAPID key pair (kept across runs) to the git-ignored `deploy/dev.env`, and prints a single-use login link that needs no passkey. Idempotent; run it again for a new link |
 | `make e2e` | End-to-end test (`deploy/e2e.sh`): runs the image `make image` built in a Podman pod with PostgreSQL, Pocket ID and the fake push service (`cmd/fakepush`, D-73), then the Playwright tests in `web/e2e`. Needs Playwright's Chromium (`cd web && npx playwright install chromium`) or `PLAYWRIGHT_CHROMIUM` pointing to another one. Arguments for Playwright go after the script: `deploy/e2e.sh --repeat-each=3` |
+| `nix build` / `nix flake check` | Builds the Nix package (`flake.nix`, `nix/package.nix`) / also runs the NixOS test of the module (`nix/test.nix`), a virtual machine with PostgreSQL and the service (D-74). After changing `go.sum` or `web/package-lock.json`, set `vendorHash` or `npmDepsHash` in `nix/package.nix` to `lib.fakeHash`, run `nix build`, and copy the hash it reports as "got" |
 | `deploy/smoke-test.sh` | Runs the built image read-only next to PostgreSQL and checks `GET /healthz` = 200, `GET /api/v1/me` = 401, that `/auth/login` is served, that the web client is served with its CSP and that `/metrics` answers on its own port only (CI runs it after `make image`) |
 
 Integration tests start a throwaway PostgreSQL (`internal/testdb`) through testcontainers, which needs a Docker-compatible API. Tests that need the schema call `storagetest.NewPool`: one container per test package, and a fresh database cloned from a migrated template per test (the package needs `func TestMain(m *testing.M) { storagetest.Main(m) }`). With Podman:
@@ -90,4 +92,4 @@ To work on the web client with hot reload, run the server on the host as above b
 
 To log in, open the link the setup script printed (it signs you in to Pocket ID as `dev`), then `/auth/login` on the app (`http://localhost:8080` in compose, `http://localhost:8081` on the host, `http://localhost:5173` with Vite). Use `localhost`, not `127.0.0.1`: the cookies and the OIDC callback are bound to the `PUBLIC_URL` origin.
 
-CI (`.github/workflows/ci.yml`, GitHub Actions) runs `make check-generated`, golangci-lint, `make go-test` and `make build` in one job, `make web-lint`, `make web-test` and `make web-build` in another, then `make image`, `deploy/smoke-test.sh` and `make e2e`. Actions are pinned by commit SHA.
+CI (`.github/workflows/ci.yml`, GitHub Actions) runs `make check-generated`, golangci-lint, `make go-test` and `make build` in one job, `make web-lint`, `make web-test` and `make web-build` in another, then `make image`, `deploy/smoke-test.sh` and `make e2e`; a fourth job runs `nix flake check`. Actions are pinned by commit SHA.
