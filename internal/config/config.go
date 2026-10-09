@@ -21,6 +21,10 @@ type Config struct {
 	ListenAddr  string
 	LogLevel    slog.Level
 
+	// MetricsListenAddr is where /metrics listens (D-72); empty disables
+	// metrics.
+	MetricsListenAddr string
+
 	// PublicURL is the origin the browser uses to reach the server, e.g.
 	// "https://tasks.example.com", without a trailing slash. The OIDC
 	// redirect URL and the same-origin check derive from it.
@@ -65,6 +69,7 @@ type LookupFunc func(key string) (value string, ok bool)
 
 const (
 	defaultListenAddr         = ":8080"
+	defaultMetricsListenAddr  = ":9090"
 	defaultSessionIdleTimeout = 7 * 24 * time.Hour
 	defaultSessionMaxAge      = 30 * 24 * time.Hour
 	defaultSchedulerInterval  = 15 * time.Second
@@ -76,6 +81,7 @@ const (
 func Load(lookup LookupFunc) (Config, error) {
 	cfg := Config{
 		ListenAddr:          defaultListenAddr,
+		MetricsListenAddr:   defaultMetricsListenAddr,
 		LogLevel:            slog.LevelInfo,
 		SessionIdleTimeout:  defaultSessionIdleTimeout,
 		SessionMaxAge:       defaultSessionMaxAge,
@@ -90,6 +96,11 @@ func Load(lookup LookupFunc) (Config, error) {
 
 	if value, ok := lookup("LISTEN_ADDR"); ok && value != "" {
 		cfg.ListenAddr = value
+	}
+
+	// Set but empty means "no metrics", so unset and empty differ here.
+	if value, ok := lookup("METRICS_LISTEN_ADDR"); ok {
+		cfg.MetricsListenAddr = value
 	}
 
 	if value, ok := lookup("LOG_LEVEL"); ok && value != "" {

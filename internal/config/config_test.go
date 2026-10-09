@@ -71,6 +71,9 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.ListenAddr != ":8080" {
 		t.Errorf("ListenAddr = %q, want :8080", cfg.ListenAddr)
 	}
+	if cfg.MetricsListenAddr != ":9090" {
+		t.Errorf("MetricsListenAddr = %q, want :9090", cfg.MetricsListenAddr)
+	}
 	if cfg.LogLevel != slog.LevelInfo {
 		t.Errorf("LogLevel = %v, want INFO", cfg.LogLevel)
 	}
@@ -333,5 +336,17 @@ func TestVAPIDErrorsDoNotLeakTheKey(t *testing.T) {
 	_, err := Load(env(required(map[string]string{"VAPID_PUBLIC_KEY": otherPublicKey()})))
 	if err == nil || strings.Contains(err.Error(), testPrivateKey) {
 		t.Errorf("error = %v", err)
+	}
+}
+
+// D-72: an empty METRICS_LISTEN_ADDR turns metrics off.
+func TestMetricsCanBeTurnedOff(t *testing.T) {
+	cfg, err := Load(env(required(map[string]string{"METRICS_LISTEN_ADDR": ""})))
+	if err != nil || cfg.MetricsListenAddr != "" {
+		t.Errorf("MetricsListenAddr = %q (%v), want empty", cfg.MetricsListenAddr, err)
+	}
+	cfg, err = Load(env(required(map[string]string{"METRICS_LISTEN_ADDR": "127.0.0.1:9100"})))
+	if err != nil || cfg.MetricsListenAddr != "127.0.0.1:9100" {
+		t.Errorf("MetricsListenAddr = %q (%v)", cfg.MetricsListenAddr, err)
 	}
 }

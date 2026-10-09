@@ -46,5 +46,6 @@ COPY --from=build /out/brinketask /brinketask
 # The process writes nothing to disk, so the container can run with a
 # read-only root file system (SPEC section 10).
 USER 65532:65532
-EXPOSE 8080
+# 9090 serves /metrics (D-72); publish it only to the monitoring network.
+EXPOSE 8080 9090
 ENTRYPOINT ["/brinketask"]

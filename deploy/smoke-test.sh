@@ -2,7 +2,8 @@
 # Smoke test of a built application image: starts PostgreSQL and the image
 # with the production restrictions (read-only root, no capabilities) and
 # checks that the server migrates, answers GET /healthz with 200, refuses
-# anonymous API calls, serves the login route and serves the web client.
+# anonymous API calls, serves the login route and the web client, and
+# serves metrics on their own port only (D-72).
 # The OIDC provider is a dummy: discovery runs on the first login, not at
 # startup, and the health check does not depend on it.
 #
@@ -15,6 +16,7 @@ engine="${CONTAINER_ENGINE:-podman}"
 postgres_image="docker.io/library/postgres:18.6-alpine3.24"
 name="brinketask-smoke-$$"
 port=18080
+metrics_port=19090
 
 cleanup() {
   "$engine" rm -f "$name-app" "$name-db" >/dev/null 2>&1 || true
@@ -43,7 +45,7 @@ vapid_public="$(sed -n 's/^VAPID_PUBLIC_KEY=//p' <<<"$keys")"
 vapid_private="$(sed -n 's/^VAPID_PRIVATE_KEY=//p' <<<"$keys")"
 
 "$engine" run -d --name "$name-app" --network "$name" \
-  --read-only --cap-drop=ALL -p "127.0.0.1:$port:8080" \
+  --read-only --cap-drop=ALL -p "127.0.0.1:$port:8080" -p "127.0.0.1:$metrics_port:9090" \
   -e DATABASE_URL="postgres://smoke:smoke@$name-db:5432/smoke?sslmode=disable" \
   -e PUBLIC_URL="http://localhost:$port" \
   -e OIDC_ISSUER="http://127.0.0.1:1" \
@@ -83,5 +85,15 @@ esac
 headers="$(curl -s -D - -o /dev/null "http://127.0.0.1:$port/today")"
 grep -qi "^content-type: text/html" <<<"$headers" || fail "GET /today is not HTML"
 grep -qi "^content-security-policy: default-src 'self'" <<<"$headers" || fail "GET /today has no CSP"
+
+# Metrics answer on their port, after the requests above, and the
+# application port does not serve them.
+metrics="$(curl -s "http://127.0.0.1:$metrics_port/metrics")"
+grep -q "^brinketask_http_requests_total{code=\"401\",method=\"GET\",route=\"GET /api/v1/me\"} 1$" <<<"$metrics" ||
+  fail "the metrics do not count GET /api/v1/me"
+grep -q "^brinketask_db_pool_connections " <<<"$metrics" || fail "no database pool metrics"
+if curl -s "http://127.0.0.1:$port/metrics" | grep -q "brinketask_http_requests_total"; then
+  fail "the application port serves the metrics"
+fi
 
 echo "smoke test passed"

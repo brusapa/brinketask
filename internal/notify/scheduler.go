@@ -36,6 +36,7 @@ const batch = 100
 // it polls PostgreSQL, so it needs no broker, and every claim skips rows
 // another scheduler holds, so several replicas can run it at once.
 type Scheduler struct {
+	observer    Observer
 	pool        *pgxpool.Pool
 	clock       clock.Clock
 	tasks       *tasks.Service
@@ -49,7 +50,29 @@ type Scheduler struct {
 func NewScheduler(pool *pgxpool.Pool, clk clock.Clock, taskService *tasks.Service, sender Sender,
 	maxLateness time.Duration, logger *slog.Logger,
 ) *Scheduler {
-	return &Scheduler{pool: pool, clock: clk, tasks: taskService, sender: sender, logger: logger, maxLateness: maxLateness}
+	return &Scheduler{
+		pool: pool, clock: clk, tasks: taskService, sender: sender, logger: logger, maxLateness: maxLateness,
+		observer: noObserver{},
+	}
+}
+
+// Observer is told what the scheduler does, for metrics.
+type Observer interface {
+	// ReminderFired reports a fired reminder and how late it fired.
+	ReminderFired(late time.Duration)
+	// Delivery reports an outcome: "sent", "retry", "failed", "gone" or
+	// "skipped".
+	Delivery(outcome string)
+}
+
+type noObserver struct{}
+
+func (noObserver) ReminderFired(time.Duration) {}
+func (noObserver) Delivery(string)             {}
+
+// Observe sets the observer.
+func (s *Scheduler) Observe(o Observer) {
+	s.observer = o
 }
 
 // Run ticks every interval until ctx ends. A failed tick is logged and the
@@ -123,9 +146,13 @@ func (s *Scheduler) fire(ctx context.Context, q *dbgen.Queries, r dbgen.Reminder
 		return err
 	}
 	status, next := statusPending, &now
+	s.observer.ReminderFired(now.Sub(fireAt))
 	if now.Sub(fireAt) > s.maxLateness {
 		// After an outage: a reminder this old is no use (SPEC section 6).
 		status, next = statusSkipped, nil
+		for range devices {
+			s.observer.Delivery(statusSkipped)
+		}
 	}
 	for _, device := range devices {
 		err := q.InsertDelivery(ctx, dbgen.InsertDeliveryParams{
@@ -178,6 +205,7 @@ func (s *Scheduler) send(ctx context.Context, q *dbgen.Queries, d dbgen.ClaimDue
 	sendErr := s.sender.Send(sendCtx, webpush.Subscription{Endpoint: d.Endpoint, P256dh: d.P256dh, Auth: d.Auth}, payload)
 	now := s.clock.Now()
 	if sendErr == nil {
+		s.observer.Delivery("sent")
 		if err := q.MarkDeliverySent(ctx, dbgen.MarkDeliverySentParams{Now: &now, ID: d.ID}); err != nil {
 			return err
 		}
@@ -191,14 +219,17 @@ func (s *Scheduler) send(ctx context.Context, q *dbgen.Queries, d dbgen.ClaimDue
 	case errors.Is(sendErr, webpush.ErrGone):
 		// The browser unsubscribed: no retry, and no more deliveries.
 		s.logger.Info("device gone, disabling it", "device", d.SubscriptionID)
+		s.observer.Delivery("gone")
 		if err := q.DisableSubscription(ctx, dbgen.DisableSubscriptionParams{Now: &now, ID: d.SubscriptionID}); err != nil {
 			return err
 		}
 		return q.MarkDeliveryFailed(ctx, dbgen.MarkDeliveryFailedParams{Error: &message, ID: d.ID})
 	case attempts >= maxAttempts:
 		s.logger.Warn("delivery failed", "delivery", d.ID, "attempts", attempts, "error", message)
+		s.observer.Delivery("failed")
 		return q.MarkDeliveryFailed(ctx, dbgen.MarkDeliveryFailedParams{Error: &message, ID: d.ID})
 	default:
+		s.observer.Delivery("retry")
 		next := now.Add(firstRetry << (attempts - 1))
 		return q.MarkDeliveryRetry(ctx, dbgen.MarkDeliveryRetryParams{NextAttemptAt: &next, Error: &message, ID: d.ID})
 	}

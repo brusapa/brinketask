@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -344,4 +345,45 @@ func TestConcurrentSchedulersSendOnce(t *testing.T) {
 func webpushSender(t *testing.T, e *env) notify.Sender {
 	t.Helper()
 	return notify.SenderOf(e.scheduler)
+}
+
+// recorder is an Observer that keeps what it is told.
+type recorder struct {
+	mu       sync.Mutex
+	fired    []time.Duration
+	outcomes []string
+}
+
+func (r *recorder) ReminderFired(late time.Duration) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.fired = append(r.fired, late)
+}
+
+func (r *recorder) Delivery(outcome string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.outcomes = append(r.outcomes, outcome)
+}
+
+// D-72: the scheduler reports what it does, for metrics.
+func TestSchedulerReportsToObserver(t *testing.T) {
+	e := setup(t)
+	rec := &recorder{}
+	e.scheduler.Observe(rec)
+	e.device(t, "phone")
+	e.task(t, "Observed", start)
+	e.push.Answer("phone", 500)
+
+	e.clock.Advance(5 * time.Second)
+	e.tick(t) // fires 5 s late; the first attempt fails
+	e.clock.Advance(30 * time.Second)
+	e.tick(t) // the retry succeeds
+
+	if len(rec.fired) != 1 || rec.fired[0] != 5*time.Second {
+		t.Errorf("fired = %v, want one 5 s late", rec.fired)
+	}
+	if !slices.Equal(rec.outcomes, []string{"retry", "sent"}) {
+		t.Errorf("outcomes = %v", rec.outcomes)
+	}
 }
