@@ -50,30 +50,30 @@ CLAUDE.md
 
 ## Commands
 
-Tool versions: Go 1.27.1, golangci-lint v2.14.0, Node 24.21.0 (`web/.node-version`), GNU Make. The web client lives in `web/` (Vite, React, TypeScript); its packages are pinned in `web/package-lock.json` and installed by Make with `npm ci` when the lock file changes.
+Tool versions: Go 1.27.1, golangci-lint v2.14.0, Node 24.21.0 (`web/.node-version`), GNU Make, PostgreSQL 18 and Pocket ID 2.18.0 for the tests. `nix develop` opens a shell with all of them except golangci-lint (nixpkgs has another version), plus `with-test-postgres` (D-75); `nix develop -c <command>` runs one command in it. The web client lives in `web/` (Vite, React, TypeScript); its packages are pinned in `web/package-lock.json` and installed by Make with `npm ci` when the lock file changes.
 
 | Command | What it does |
 |---|---|
 | `make generate` | Regenerates code from `api/openapi.yaml` (oapi-codegen v2.8.0, pinned as a `go tool`) into `internal/httpapi/api.gen.go` and `web/src/api/schema.gen.ts` (openapi-typescript), and the data access code from `internal/storage/queries/*.sql` (sqlc 1.31.1, run from its pinned image with Podman) into `internal/storage/dbgen`. Generated files are committed |
 | `make check-generated` | Regenerates and fails if any `*.gen.go` or `*.gen.ts` file changed: run after editing the contract |
 | `make lint` | `go-lint`: golangci-lint (config in `.golangci.yml`; fails if the linter version differs). `web-lint`: ESLint, including the rule that rejects literal text in JSX, Prettier and `tsc` |
-| `make test` | `go-test`: `go test -race ./...` (`GO_TEST_FLAGS=` drops `-race` when no C compiler is available). `web-test`: Vitest with jsdom |
+| `make test` | `go-test`: `go test -race ./...` (`GO_TEST_FLAGS=` drops `-race` when no C compiler is available); the integration tests need `TEST_DATABASE_URL`, so run it as `with-test-postgres make test` (see below). `web-test`: Vitest with jsdom |
+| `with-test-postgres <command>` | `deploy/with-test-postgres.sh`, a command of `nix develop`: starts a throwaway PostgreSQL 18 in a temporary directory, on a Unix socket only, runs the command with the superuser's URL in `TEST_DATABASE_URL`, then stops the server and removes the directory, also on failure or Ctrl-C. Without Nix the script runs with any PostgreSQL 18 whose `initdb` and `pg_ctl` are on the `PATH` |
 | `make build` | Builds the web client, then the static binary `bin/brinketask` with the client embedded (build tag `webui`; without it, as in `go test`, the binary serves only the API) |
-| `make all` | lint, test and build: run before calling anything done |
+| `make all` | lint, test and build: run before calling anything done, as `with-test-postgres make all` |
 | `make image` | Builds the application image `localhost/brinketask:dev` from `deploy/Dockerfile` with Podman |
 | `make dev` / `make dev-down` | Starts / stops PostgreSQL, a Pocket ID on `http://localhost:1411` and the app on `http://localhost:8080` (`deploy/compose.dev.yaml`). Needs a compose provider for `podman compose` (podman-compose or docker-compose) |
 | `go run ./cmd/brinketask vapid-keys` | Prints a new VAPID key pair for Web Push (D-68) |
 | `deploy/dev-oidc-setup.sh` | Run by `make dev`: creates the Pocket ID user `dev` and the OIDC client `brinketask-dev`, writes the client secret and a VAPID key pair (kept across runs) to the git-ignored `deploy/dev.env`, and prints a single-use login link that needs no passkey. Idempotent; run it again for a new link |
-| `make e2e` | End-to-end test (`deploy/e2e.sh`): runs the image `make image` built in a Podman pod with PostgreSQL, Pocket ID and the fake push service (`cmd/fakepush`, D-73), then the Playwright tests in `web/e2e`. Needs Playwright's Chromium (`cd web && npx playwright install chromium`) or `PLAYWRIGHT_CHROMIUM` pointing to another one. Arguments for Playwright go after the script: `deploy/e2e.sh --repeat-each=3` |
+| `make e2e` | End-to-end test (`deploy/e2e.sh`, after `make build`): runs `bin/brinketask`, a native Pocket ID and the fake push service (`cmd/fakepush`, D-73) as local processes on `127.0.0.1`, in a database of its own on the server of `TEST_DATABASE_URL` or, without it, on a throwaway one it starts with `with-test-postgres`; then the Playwright tests in `web/e2e`. No containers (D-75). Run it as `nix develop -c make e2e`. It refuses to start while something answers on its ports (18080, 11411, 18091). Needs Playwright's Chromium (`cd web && npx playwright install chromium`) or `PLAYWRIGHT_CHROMIUM` pointing to another one. Arguments for Playwright go after the script: `deploy/e2e.sh --repeat-each=3` |
 | `nix build` / `nix flake check` | Builds the Nix package (`flake.nix`, `nix/package.nix`) / also runs the NixOS test of the module (`nix/test.nix`), a virtual machine with PostgreSQL and the service (D-74). After changing `go.sum` or `web/package-lock.json`, set `vendorHash` or `npmDepsHash` in `nix/package.nix` to `lib.fakeHash`, run `nix build`, and copy the hash it reports as "got" |
 | `deploy/smoke-test.sh` | Runs the built image read-only next to PostgreSQL and checks `GET /healthz` = 200, `GET /api/v1/me` = 401, that `/auth/login` is served, that the web client is served with its CSP and that `/metrics` answers on its own port only (CI runs it after `make image`) |
 
-Integration tests start a throwaway PostgreSQL (`internal/testdb`) through testcontainers, which needs a Docker-compatible API. Tests that need the schema call `storagetest.NewPool`: one container per test package, and a fresh database cloned from a migrated template per test (the package needs `func TestMain(m *testing.M) { storagetest.Main(m) }`). With Podman:
+Integration tests run against the PostgreSQL server of `TEST_DATABASE_URL` (`internal/testdb`, D-75); without the variable they fail, never skip. `testdb.Start` gives a test an empty database of its own. Tests that need the schema call `storagetest.NewPool`: each test package migrates one template database and every test gets a fresh database cloned from it (the package needs `func TestMain(m *testing.M) { storagetest.Main(m) }`). Database names carry the process id, so the packages `go test ./...` runs in parallel share one server. The whole suite, as CI runs it:
 
 ```sh
-systemctl --user enable --now podman.socket
-export DOCKER_HOST=unix://$XDG_RUNTIME_DIR/podman/podman.sock
-export TESTCONTAINERS_RYUK_CONTAINER_PRIVILEGED=true   # the cleanup container needs it under Podman
+nix develop -c with-test-postgres make go-test
+nix develop -c with-test-postgres go test -run TestQueryTasksSearch ./internal/httpapi   # one test
 ```
 
 To run the server on the host instead of in a container, start only the database and Pocket ID and point the binary at them. It listens on port 8081, because the Pocket ID container publishes 8080 for the containerized app:
@@ -92,4 +92,4 @@ To work on the web client with hot reload, run the server on the host as above b
 
 To log in, open the link the setup script printed (it signs you in to Pocket ID as `dev`), then `/auth/login` on the app (`http://localhost:8080` in compose, `http://localhost:8081` on the host, `http://localhost:5173` with Vite). Use `localhost`, not `127.0.0.1`: the cookies and the OIDC callback are bound to the `PUBLIC_URL` origin.
 
-CI (`.github/workflows/ci.yml`, GitHub Actions) runs `make check-generated`, golangci-lint, `make go-test` and `make build` in one job, `make web-lint`, `make web-test` and `make web-build` in another, then `make image`, `deploy/smoke-test.sh` and `make e2e`; a fourth job runs `nix flake check`. Actions are pinned by commit SHA.
+CI (`.github/workflows/ci.yml`, GitHub Actions) runs `make check-generated`, golangci-lint, `make go-test` and `make build` in one job, `make web-lint`, `make web-test` and `make web-build` in another, then `make image` and `deploy/smoke-test.sh` in a third; a fourth runs `make e2e` and a fifth `nix flake check`. The Go tests and the end-to-end test run in `nix develop`. Actions are pinned by commit SHA.
