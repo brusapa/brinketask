@@ -120,6 +120,7 @@ Each decision has an identifier so it can be cited in commits and reviews.
 | D-72 | Metrics use the Prometheus Go client and listen on `METRICS_LISTEN_ADDR` (default `:9090`; empty disables them). Labels never carry user data: routes are the router's patterns | The standard client gives the exact format and the Go and process metrics |
 | D-73 | The end-to-end test receives a reminder through a fake push service that checks VAPID and decrypts like a browser, then hands the message to the browser's service worker through the DevTools protocol; only the push service is fake. `PUSH_TEST_ENDPOINT_PREFIX` lets the server accept endpoints with that exact prefix for this test only; it is never set in production | Headless browsers have no push service, and CI has no access to one |
 | D-74 | Besides the container image, the repository is a Nix flake: a package built from the same sources (the web client embedded, as in `make build`) and a NixOS module, `services.brinketask`, that runs it as a hardened systemd service, optionally with a local PostgreSQL. Secrets reach it as files through systemd credentials and the `_FILE` variables; VAPID keys are made once by the administrator (D-68). CI builds the package and runs a NixOS test, so the dependency hashes cannot drift unnoticed | Requested after V1 for NixOS hosts; it changes no behaviour |
+| D-75 | Integration and end-to-end tests need no container runtime. They run against a throwaway PostgreSQL 18 started as a local process (`deploy/with-test-postgres.sh`, also a command of the flake's development shell), whose URL reaches the tests in `TEST_DATABASE_URL`; without it they fail, never skip. Each test package migrates one template database and clones a fresh database from it per test. The end-to-end test runs the built binary, a native Pocket ID and the fake push service (D-73) as local processes; the image is checked by the smoke test. Testcontainers is no longer used | Rootless containers cannot run on every development machine (for example inside a systemd-nspawn container); one way to run the tests everywhere, with the PostgreSQL version pinned by `flake.lock` |
 
 ## 4. Data model
 
@@ -408,7 +409,7 @@ Every phase ends with green CI and is deployable.
 
 Indicative. Before adopting any, check that it is still maintained and check its licence.
 
-- Go: `chi` (routing), `oapi-codegen` (strict server from OpenAPI), `pgx` + `sqlc` (data access), `goose` (migrations), `coreos/go-oidc` + `x/oauth2` (OIDC), `webpush-go` (Web Push), `testcontainers-go` (PostgreSQL in tests).
+- Go: `chi` (routing), `oapi-codegen` (strict server from OpenAPI), `pgx` + `sqlc` (data access), `goose` (migrations), `coreos/go-oidc` + `x/oauth2` (OIDC), `webpush-go` (Web Push). Tests use a local PostgreSQL, not containers (D-75).
 - Web: Vite, React, TypeScript, TanStack Query, `openapi-typescript` + `openapi-fetch`, Playwright. React Aria Components and i18next (D-46).
 
 ## 14. Open points to verify
