@@ -46,7 +46,11 @@ trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-initdb -D "$dir/data" -U postgres --auth=trust --encoding=UTF8 --no-locale >"$dir/initdb.log" 2>&1 || {
+# The builtin C.UTF-8 locale: lower() and upper() follow Unicode, which
+# search needs (D-52; under the plain C locale they change ASCII only),
+# and it does not depend on the operating system's locales.
+initdb -D "$dir/data" -U postgres --auth=trust --encoding=UTF8 \
+  --locale-provider=builtin --builtin-locale=C.UTF-8 >"$dir/initdb.log" 2>&1 || {
   cat "$dir/initdb.log" >&2
   exit 1
 }

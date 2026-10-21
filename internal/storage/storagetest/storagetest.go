@@ -1,11 +1,13 @@
 // Package storagetest gives integration tests a migrated database of their
 // own.
 //
-// Starting a PostgreSQL container takes seconds, so a test package shares
-// one container and each test gets a fresh database cloned from a migrated
-// template (CREATE DATABASE ... TEMPLATE copies files, which takes
-// milliseconds). A package that uses NewPool must call Main from its
-// TestMain, so the container is removed when its tests end:
+// Migrating takes far longer than copying, so a test package migrates one
+// template database, the first time a test asks for a pool, and each test
+// gets a fresh database cloned from it (CREATE DATABASE ... TEMPLATE
+// copies files, which takes milliseconds). The databases live on the
+// server of TEST_DATABASE_URL (package testdb, D-75). A package that uses
+// NewPool must call Main from its TestMain, so the template is dropped
+// when its tests end:
 //
 //	func TestMain(m *testing.M) { storagetest.Main(m) }
 package storagetest
@@ -15,40 +17,32 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"net/url"
 	"os"
 	"sync"
-	"sync/atomic"
 	"testing"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/brusapa/brinketask/internal/storage"
 	"github.com/brusapa/brinketask/internal/testdb"
 )
 
-const templateName = "brinketask_template"
-
-// shared is the package's container, started by the first NewPool call.
-// sync.Once runs the start exactly once even when tests run in parallel.
+// The package's template, made by the first NewPool call. sync.Once runs
+// the migration exactly once even when tests run in parallel.
 var (
-	startOnce sync.Once
-	adminURL  string // connection URL of the container's default database
-	terminate func()
-	startErr  error
-
-	// Each test database gets a distinct name from this counter.
-	databases atomic.Int64
+	templateOnce sync.Once
+	templateName string
+	dropTemplate func()
+	templateErr  error
 )
 
-// Main runs the tests of the package and then removes the shared container.
-// It replaces the default test runner: in Go, a package that defines
+// Main runs the tests of the package and then drops the template. It
+// replaces the default test runner: in Go, a package that defines
 // TestMain(m) must call m.Run itself.
 func Main(m *testing.M) {
 	code := m.Run()
-	if terminate != nil {
-		terminate()
+	if dropTemplate != nil {
+		dropTemplate()
 	}
 	os.Exit(code)
 }
@@ -59,21 +53,18 @@ func NewPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	ctx := context.Background()
 
-	startOnce.Do(func() { startErr = start(ctx) })
-	if startErr != nil {
-		t.Fatalf("storagetest: %v", startErr)
+	templateOnce.Do(func() { templateErr = makeTemplate(ctx) })
+	if templateErr != nil {
+		t.Fatalf("storagetest: %v", templateErr)
 	}
 
-	name := fmt.Sprintf("test_%d", databases.Add(1))
-	if err := adminExec(ctx, "CREATE DATABASE "+name+" TEMPLATE "+templateName); err != nil {
-		t.Fatalf("storagetest: create database: %v", err)
+	db, drop, err := testdb.Create(ctx, templateName)
+	if err != nil {
+		t.Fatalf("storagetest: %v", err)
 	}
-	t.Cleanup(func() {
-		// FORCE closes connections a failed test may have left open.
-		_ = adminExec(context.Background(), "DROP DATABASE "+name+" WITH (FORCE)")
-	})
+	t.Cleanup(drop)
 
-	pool, err := storage.Open(ctx, withDatabase(adminURL, name))
+	pool, err := storage.Open(ctx, db.URL)
 	if err != nil {
 		t.Fatalf("storagetest: open: %v", err)
 	}
@@ -82,18 +73,16 @@ func NewPool(t *testing.T) *pgxpool.Pool {
 	return pool
 }
 
-// start runs the container and builds the migrated template database.
-func start(ctx context.Context) error {
-	var err error
-	adminURL, terminate, err = testdb.Run(ctx)
+// makeTemplate creates the template database and applies the migrations.
+func makeTemplate(ctx context.Context) error {
+	db, drop, err := testdb.Create(ctx, "")
+	dropTemplate = drop
 	if err != nil {
-		return err
+		return fmt.Errorf("template: %w", err)
 	}
-	if err := adminExec(ctx, "CREATE DATABASE "+templateName); err != nil {
-		return fmt.Errorf("create template: %w", err)
-	}
+	templateName = db.Name
 
-	pool, err := storage.Open(ctx, withDatabase(adminURL, templateName))
+	pool, err := storage.Open(ctx, db.URL)
 	if err != nil {
 		return fmt.Errorf("open template: %w", err)
 	}
@@ -104,28 +93,4 @@ func start(ctx context.Context) error {
 		return fmt.Errorf("migrate template: %w", err)
 	}
 	return nil
-}
-
-// adminExec runs a statement on the default database. CREATE and DROP
-// DATABASE cannot run inside a transaction, so this uses a plain
-// connection instead of a pool.
-func adminExec(ctx context.Context, sql string) error {
-	conn, err := pgx.Connect(ctx, adminURL)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = conn.Close(ctx) }()
-	_, err = conn.Exec(ctx, sql)
-	return err
-}
-
-// withDatabase returns rawURL pointing at another database on the same
-// server. The URLs come from testdb, so they always parse.
-func withDatabase(rawURL, database string) string {
-	u, err := url.Parse(rawURL)
-	if err != nil {
-		panic(err)
-	}
-	u.Path = "/" + database
-	return u.String()
 }
