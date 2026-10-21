@@ -43,13 +43,17 @@ OIDC client, the settings, Caddy or nginx, metrics and upgrades.
 
 ## Development
 
-Go 1.27.1, Node 24.21.0, GNU Make and Podman with a compose provider.
+Go 1.27.1, Node 24.21.0, GNU Make, PostgreSQL 18 and Pocket ID for the
+tests, and Podman with a compose provider for `make dev` and the image.
+`nix develop` provides all but Podman and golangci-lint. The tests need no
+containers: they run against a throwaway PostgreSQL that
+`with-test-postgres` starts for one command.
 
 ```sh
-make dev     # PostgreSQL, Pocket ID and the app on http://localhost:8080
-make all     # lint, tests and build: run before calling a change done
-make image   # the container image
-make e2e     # the end-to-end test (Playwright) against that image
+make dev                                       # PostgreSQL, Pocket ID and the app on http://localhost:8080
+nix develop -c with-test-postgres make all     # lint, tests and build: run before calling a change done
+nix develop -c make e2e                        # the end-to-end test (Playwright)
+make image                                     # the container image
 ```
 
 `make dev` prints a one-time link that signs you in to the development

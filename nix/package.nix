@@ -32,7 +32,7 @@ buildGo127Module {
   pname = "brinketask";
   inherit version;
   src = ../.;
-  vendorHash = "sha256-ooHDMhagIItWRp5S/N1owkChifyw31MafziHAV0NpXI=";
+  vendorHash = "sha256-l2RkczkMT79MtaQ63so4TDsYRZttphuL2pl35hl6s4c=";
 
   subPackages = [ "cmd/brinketask" ];
   tags = [ "webui" ];
