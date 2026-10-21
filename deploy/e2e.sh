@@ -1,26 +1,34 @@
 #!/usr/bin/env bash
-# End-to-end test (SPEC section 11): runs the built application image with
-# PostgreSQL, a Pocket ID and the fake push service (D-73) in one Podman
-# pod, then the Playwright tests in web/e2e against it.
+# End-to-end test (SPEC section 11): runs the built server binary with
+# PostgreSQL, a Pocket ID and the fake push service (D-73) as local
+# processes, no containers (D-75), then the Playwright tests in web/e2e
+# against it.
 #
-# In a pod the containers share one network namespace, so
-# http://localhost:11411 is Pocket ID both for the browser on the host and
-# for the server in the pod: go-oidc requires the issuer to be the same
-# URL for both. The ports differ from `make dev`'s, so both can run.
+# Everything listens on 127.0.0.1, so http://localhost:11411 is Pocket ID
+# both for the browser and for the server: go-oidc requires the issuer to
+# be the same URL for both. The ports differ from `make dev`'s, so both
+# can run.
 #
-# Usage: deploy/e2e.sh [playwright arguments]; E2E_IMAGE names the image
-# (default localhost/brinketask:dev).
-# Needs Podman, Go, curl and the web dependencies (npm ci in web/). The
-# browser is Playwright's Chromium (npx playwright install chromium), or
-# the one PLAYWRIGHT_CHROMIUM points to.
+# PostgreSQL is the server of TEST_DATABASE_URL, in a database of its own;
+# without the variable the script runs itself again under
+# deploy/with-test-postgres.sh, which starts a throwaway one.
+#
+# Usage: deploy/e2e.sh [playwright arguments]; E2E_BINARY names the server
+# binary (default bin/brinketask, which `make build` makes with the web
+# client embedded). Needs Go, curl, psql, pocket-id (2.18.0, the version
+# deploy/compose.dev.yaml runs) and the web dependencies (npm ci in web/):
+# `nix develop` provides them all. The browser is Playwright's Chromium
+# (npx playwright install chromium), or the one PLAYWRIGHT_CHROMIUM
+# points to.
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
-image="${E2E_IMAGE:-localhost/brinketask:dev}"
-postgres_image="docker.io/library/postgres:18.6-alpine3.24"
-# Keep in step with deploy/compose.dev.yaml.
-pocket_id_image="ghcr.io/pocket-id/pocket-id:v2.18.0@sha256:323e7ef5bfacf7cf32f22f3d10ccdf48e0c97c94d67e7e40b0b996830deb5165"
-pod="brinketask-e2e-$$"
+
+if [ -z "${TEST_DATABASE_URL:-}" ]; then
+  exec "$root/deploy/with-test-postgres.sh" "$0" "$@"
+fi
+
+binary="${E2E_BINARY:-$root/bin/brinketask}"
 app_url="http://localhost:18080"
 pocket_id_url="http://localhost:11411"
 fakepush_url="http://localhost:18091"
@@ -28,16 +36,35 @@ fakepush_url="http://localhost:18091"
 # uses. Not a secret.
 pocket_id_api_key="brinketask-dev-static-api-key"
 
+if [ ! -x "$binary" ]; then
+  echo "no server binary at $binary: run make build first" >&2
+  exit 1
+fi
+
 work="$(mktemp -d)"
+# The database of this run, on the server of TEST_DATABASE_URL.
+database="e2e_$$"
+# Process ids of the services this script starts, stopped by cleanup.
+pids=()
+
 cleanup() {
   status=$?
+  for pid in "${pids[@]}"; do
+    kill "$pid" 2>/dev/null || true
+  done
+  # wait collects the processes, so none outlives the script.
+  for pid in "${pids[@]}"; do
+    wait "$pid" 2>/dev/null || true
+  done
   if [ "$status" -ne 0 ]; then
-    echo "--- application log" >&2
-    podman logs "$pod-app" >&2 2>&1 || true
-    echo "--- fake push service log" >&2
-    podman logs "$pod-push" >&2 2>&1 || true
+    for log in app fakepush pocket-id; do
+      if [ -f "$work/$log.log" ]; then
+        echo "--- $log log" >&2
+        cat "$work/$log.log" >&2
+      fi
+    done
   fi
-  podman pod rm -f "$pod" >/dev/null 2>&1 || true
+  psql "$TEST_DATABASE_URL" -qc "DROP DATABASE IF EXISTS $database WITH (FORCE)" >/dev/null 2>&1 || true
   rm -rf "$work"
   exit "$status"
 }
@@ -54,22 +81,42 @@ wait_for() { # wait_for URL WHAT
   return 1
 }
 
+# with_database URL NAME prints URL pointing at the database NAME: the
+# last path segment before the query is replaced. TEST_DATABASE_URL names a
+# database, as with-test-postgres's does
+# (postgresql:///postgres?host=/tmp/...).
+with_database() {
+  local base="${1%%\?*}"
+  local query="${1#"$base"}"
+  printf '%s/%s%s' "${base%/*}" "$2" "$query"
+}
+
+# A service left over from another run would answer in place of the ones
+# this script starts, and wait_for could not tell.
+for url in "$app_url" "$pocket_id_url" "$fakepush_url"; do
+  if curl -s -o /dev/null "$url"; then
+    echo "something already listens at $url; stop it first" >&2
+    exit 1
+  fi
+done
+
 echo "building the fake push service"
 (cd "$root" && CGO_ENABLED=0 go build -trimpath -o "$work/fakepush" ./cmd/fakepush)
 
-podman pod create --name "$pod" \
-  -p 127.0.0.1:18080:18080 -p 127.0.0.1:11411:11411 -p 127.0.0.1:18091:18091 >/dev/null
+psql "$TEST_DATABASE_URL" -qc "CREATE DATABASE $database" >/dev/null
 
-podman run -d --pod "$pod" --name "$pod-db" \
-  -e POSTGRES_USER=e2e -e POSTGRES_PASSWORD=e2e -e POSTGRES_DB=e2e \
-  "$postgres_image" >/dev/null
-
-podman run -d --pod "$pod" --name "$pod-idp" \
-  -e APP_URL="$pocket_id_url" -e PORT=11411 \
-  -e ENCRYPTION_KEY=brinketask-e2e-encryption-key \
-  -e STATIC_API_KEY="$pocket_id_api_key" \
-  -e TRUST_PROXY=false -e ANALYTICS_DISABLED=true \
-  "$pocket_id_image" >/dev/null
+# Pocket ID keeps its SQLite database and uploads under data/ in its
+# working directory.
+mkdir "$work/pocket-id"
+(
+  cd "$work/pocket-id"
+  exec env APP_URL="$pocket_id_url" HOST=127.0.0.1 PORT=11411 \
+    ENCRYPTION_KEY=brinketask-e2e-encryption-key \
+    STATIC_API_KEY="$pocket_id_api_key" \
+    TRUST_PROXY=false ANALYTICS_DISABLED=true \
+    pocket-id
+) >"$work/pocket-id.log" 2>&1 &
+pids+=("$!")
 wait_for "$pocket_id_url/healthz" "Pocket ID"
 
 # The user, the OIDC client and the VAPID keys, written to $work/e2e.env.
@@ -81,31 +128,24 @@ set -a
 . "$work/e2e.env"
 set +a
 
-echo "waiting for PostgreSQL"
-for _ in $(seq 60); do
-  if podman exec "$pod-db" pg_isready -h 127.0.0.1 -U e2e -d e2e >/dev/null 2>&1; then
-    break
-  fi
-  sleep 1
-done
+# A one-second scheduler so the reminder arrives quickly, and the fake push
+# service's prefix (D-73). The environment is passed explicitly with env -i
+# so nothing else from this shell reaches the server.
+env -i PATH="$PATH" \
+  DATABASE_URL="$(with_database "$TEST_DATABASE_URL" "$database")" \
+  LISTEN_ADDR=127.0.0.1:18080 METRICS_LISTEN_ADDR= \
+  PUBLIC_URL="$app_url" OIDC_ISSUER="$pocket_id_url" \
+  OIDC_CLIENT_ID="$OIDC_CLIENT_ID" OIDC_CLIENT_SECRET="$OIDC_CLIENT_SECRET" \
+  VAPID_PUBLIC_KEY="$VAPID_PUBLIC_KEY" VAPID_PRIVATE_KEY="$VAPID_PRIVATE_KEY" \
+  VAPID_SUBJECT=mailto:e2e@example.com \
+  SCHEDULER_INTERVAL=1s PUSH_TEST_ENDPOINT_PREFIX="$fakepush_url/" \
+  "$binary" >"$work/app.log" 2>&1 &
+pids+=("$!")
 
-# The production restrictions, a one-second scheduler so the reminder
-# arrives quickly, and the fake push service's prefix (D-73).
-podman run -d --pod "$pod" --name "$pod-app" --read-only --cap-drop=ALL \
-  -e DATABASE_URL="postgres://e2e:e2e@localhost:5432/e2e?sslmode=disable" \
-  -e LISTEN_ADDR=:18080 -e METRICS_LISTEN_ADDR= \
-  -e PUBLIC_URL="$app_url" -e OIDC_ISSUER="$pocket_id_url" \
-  -e OIDC_CLIENT_ID -e OIDC_CLIENT_SECRET \
-  -e VAPID_PUBLIC_KEY -e VAPID_PRIVATE_KEY -e VAPID_SUBJECT=mailto:e2e@example.com \
-  -e SCHEDULER_INTERVAL=1s -e PUSH_TEST_ENDPOINT_PREFIX="$fakepush_url/" \
-  "$image" >/dev/null
-
-# The fake push service runs in the application image, which has no shell
-# or libraries a static binary needs.
-podman run -d --pod "$pod" --name "$pod-push" --read-only --cap-drop=ALL \
-  -v "$work/fakepush:/fakepush:ro,Z" --entrypoint /fakepush \
-  -e VAPID_PUBLIC_KEY -e FAKEPUSH_LISTEN_ADDR=:18091 -e FAKEPUSH_URL="$fakepush_url" \
-  "$image" >/dev/null
+env -i VAPID_PUBLIC_KEY="$VAPID_PUBLIC_KEY" \
+  FAKEPUSH_LISTEN_ADDR=127.0.0.1:18091 FAKEPUSH_URL="$fakepush_url" \
+  "$work/fakepush" >"$work/fakepush.log" 2>&1 &
+pids+=("$!")
 
 wait_for "$app_url/healthz" "the application"
 wait_for "$fakepush_url/messages" "the fake push service"

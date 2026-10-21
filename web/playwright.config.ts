@@ -1,5 +1,5 @@
 // Playwright configuration of the end-to-end test (SPEC section 11), run by
-// deploy/e2e.sh against the built image. The tests are e2e/*.e2e.ts, so
+// deploy/e2e.sh against the built server. The tests are e2e/*.e2e.ts, so
 // Vitest, which picks up *.test.* and *.spec.*, never runs them.
 import { defineConfig, devices } from "@playwright/test";
 

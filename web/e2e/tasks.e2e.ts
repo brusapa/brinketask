@@ -1,5 +1,5 @@
 // The end-to-end path of SPEC section 11: create, complete, undo and
-// receive a reminder, in a real browser against the built image.
+// receive a reminder, in a real browser against the built server.
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { fakePushURL } from "./env";

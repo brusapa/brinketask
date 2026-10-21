@@ -51,6 +51,8 @@ web-lint: $(WEB_DEPS)
 
 test: go-test web-test
 
+# The integration tests need TEST_DATABASE_URL (D-75): run this target
+# through deploy/with-test-postgres.sh.
 go-test:
 	go test $(GO_TEST_FLAGS) ./...
 
@@ -68,11 +70,11 @@ web-build: $(WEB_DEPS)
 image:
 	$(CONTAINER_ENGINE) build -f deploy/Dockerfile -t $(IMAGE) .
 
-# End-to-end test (SPEC section 11) of the image `make image` built, in a
-# Podman pod; see deploy/e2e.sh. PLAYWRIGHT_CHROMIUM may name a Chromium
-# to use instead of Playwright's.
-e2e: $(WEB_DEPS)
-	E2E_IMAGE=$(IMAGE) deploy/e2e.sh
+# End-to-end test (SPEC section 11) of the binary `make build` made, with
+# its services as local processes (D-75); see deploy/e2e.sh.
+# PLAYWRIGHT_CHROMIUM may name a Chromium to use instead of Playwright's.
+e2e: build
+	deploy/e2e.sh
 
 DEV_COMPOSE := $(CONTAINER_ENGINE) compose -f deploy/compose.dev.yaml
 
