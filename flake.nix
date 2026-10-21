@@ -47,6 +47,30 @@
         };
       });
 
+      # `nix develop`: the tools the tests need (D-75). The C compiler of
+      # mkShell's standard environment lets `go test -race` use cgo.
+      # golangci-lint is not here: nixpkgs has another version than the
+      # one the Makefile requires.
+      devShells = forAllSystems (pkgs: {
+        default = pkgs.mkShell {
+          packages = [
+            # deploy/with-test-postgres.sh as a command, with its PostgreSQL.
+            (pkgs.writeShellApplication {
+              name = "with-test-postgres";
+              runtimeInputs = [ pkgs.postgresql_18 ];
+              text = builtins.readFile ./deploy/with-test-postgres.sh;
+            })
+            pkgs.go_1_27
+            pkgs.nodejs_24
+            pkgs.postgresql_18
+            # The OIDC provider of the end-to-end test, the version
+            # deploy/compose.dev.yaml runs.
+            pkgs.pocket-id
+            pkgs.curl
+          ];
+        };
+      });
+
       checks = forAllSystems (pkgs: {
         package = self.packages.${pkgs.stdenv.hostPlatform.system}.default;
         nixos = pkgs.testers.runNixOSTest (import ./nix/test.nix { module = self.nixosModules.default; });
