@@ -511,6 +511,27 @@ func TestReassignedDeviceGetsNoReminderOfPreviousOwner(t *testing.T) {
 	}
 }
 
+// SPEC section 6, D-66: a device the push service reports gone gets
+// nothing more, including deliveries already queued for it in the same
+// tick as the 404 or 410.
+func TestGoneDeviceGetsNoQueuedDelivery(t *testing.T) {
+	e := setup(t)
+	e.device(t, "phone")
+	e.task(t, "First", start)
+	e.task(t, "Second", start)
+	// Both first attempts fail; the first retry learns the device is gone.
+	e.push.Answer("phone", http.StatusServiceUnavailable, http.StatusServiceUnavailable, http.StatusGone)
+	e.tick(t)
+	e.clock.Advance(30 * time.Second)
+	e.tick(t)
+	if got := len(e.push.Messages()); got != 0 {
+		t.Errorf("a disabled device received %d message(s)", got)
+	}
+	if d := e.deliveries(t); d["failed"] != 1 || d["skipped"] != 1 || len(d) != 2 {
+		t.Errorf("deliveries = %v, want the gone one failed and the other skipped", d)
+	}
+}
+
 // heldSender stops every send until release is closed, after telling
 // entered; then the real sender sends. It holds a delivery between its
 // authorization check and the push service's answer.
