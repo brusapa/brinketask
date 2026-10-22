@@ -1,8 +1,8 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
 import { ApiError } from "../api/client";
 import { FixedClock } from "../lib/clock";
-import { item, list, page, reminder, task } from "../test/fixtures";
+import { item, list, page, reminder, task, tombstone } from "../test/fixtures";
 import { FakeServer, json, networkError, noContent, problem } from "../test/fakeFetch";
 import { Actions } from "./actions";
 import { Replica } from "./replica";
@@ -326,5 +326,54 @@ describe("reminders", () => {
     expect(server.calls("POST", "/tasks/t/snooze")[0]?.body).toMatchObject({
       until: "2026-10-09T10:10:00.000Z",
     });
+  });
+});
+
+// R-8: completing deletes a task's absolute reminders on the server; the
+// replica drops them too, from the pull that follows the completion.
+test("reminders deleted by completing leave the replica", async () => {
+  const { server, replica, actions } = setup();
+  const absolute = reminder({
+    id: "r1",
+    task_id: "t",
+    kind: "absolute",
+    offset_minutes: null,
+    at: "2026-10-09T15:00:00Z",
+    next_fire_at: "2026-10-09T15:00:00Z",
+  });
+  const recurring = task({
+    id: "t",
+    list_id: "inbox",
+    due_date: "2026-10-09",
+    rrule: "FREQ=DAILY",
+  });
+  replica.putTask({ ...recurring, checklist_items: [], reminders: [absolute] });
+  server.on("POST", "/tasks/t/complete", (r) =>
+    json({
+      applied: true,
+      task: {
+        ...recurring,
+        due_date: "2026-10-10",
+        version: 2,
+        checklist_items: [],
+        reminders: [],
+      },
+      completion: {
+        id: (r.body as { completion_id: string }).completion_id,
+        task_id: "t",
+        kind: "completed",
+        completed_at: "2026-10-09T10:00:00Z",
+      },
+    }),
+  );
+  server.on(
+    "GET",
+    "/sync/changes",
+    json(page({ reminders: [tombstone(absolute)], next_cursor: "c1" })),
+  );
+
+  await actions.complete("t");
+  await vi.waitFor(() => {
+    expect(replica.getSnapshot().reminders.has("r1")).toBe(false);
   });
 });
