@@ -47,6 +47,9 @@ jobs:
       - name: Test
         run: nix develop -c with-test-postgres make go-test
 
+      - name: Test the PostgreSQL wrapper's cleanup
+        run: nix develop -c deploy/with-test-postgres.test.sh
+
       - name: Build
         run: make build
 
