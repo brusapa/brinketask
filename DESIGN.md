@@ -34,7 +34,7 @@ Task detail, top to bottom: header bar (complete checkbox, due date button, prio
 
 ### Phone (touch devices)
 
-Single column. The sidebar becomes a drawer opened from a menu button in the header. Selecting a task opens the detail full screen with a back button. The quick-add field sits at the bottom of the list screen.
+Single column. The sidebar becomes a drawer opened from a menu button in the header. Selecting a task opens the detail full screen with a back button. The quick-add field sits at the bottom of the list screen. The narrowest supported width is 320 px; every touch target keeps its 44 px down to it (section 5).
 
 ### Breakpoints (*proposed*)
 

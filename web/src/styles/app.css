@@ -1250,11 +1250,24 @@ textarea.input {
      border (2 × 5 px) and the dialog's (2 × 8 px), within the screen. */
   .due-popover {
     width: calc(7 * 44px + 26px);
-    max-width: calc(100vw - 16px);
+    max-width: 100vw;
   }
 
   .due-popover .dialog {
     padding: 8px;
+  }
+}
+
+/* Down to the narrowest supported phone, 320 px: seven 44 px days take
+   308 px, so the popover spans the screen (the component sets no margin
+   to the edges for it) and keeps 2 × 6 px of border and padding. */
+@media (pointer: coarse) and (max-width: 349px) {
+  .due-popover {
+    padding: 0;
+  }
+
+  .due-popover .dialog {
+    padding: 8px 5px;
   }
 }
 

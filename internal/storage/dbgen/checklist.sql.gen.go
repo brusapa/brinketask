@@ -16,6 +16,8 @@ const checklistItemExists = `-- name: ChecklistItemExists :one
 SELECT EXISTS (SELECT 1 FROM checklist_items WHERE id = $1)
 `
 
+// Not filtered by user on purpose: an id taken by another user is a
+// conflict (D-23), so creation must see every row.
 func (q *Queries) ChecklistItemExists(ctx context.Context, id uuid.UUID) (bool, error) {
 	row := q.db.QueryRow(ctx, checklistItemExists, id)
 	var exists bool
@@ -77,6 +79,8 @@ type InsertChecklistItemParams struct {
 	Now      time.Time
 }
 
+// Not filtered by user: the caller first locks the row this one belongs
+// to through a *ForUser query (list_members) in the same transaction.
 func (q *Queries) InsertChecklistItem(ctx context.Context, arg InsertChecklistItemParams) error {
 	_, err := q.db.Exec(ctx, insertChecklistItem,
 		arg.ID,
@@ -135,6 +139,8 @@ ORDER BY id
 FOR UPDATE
 `
 
+// Not filtered by user: the caller first locks the row this one belongs
+// to through a *ForUser query (list_members) in the same transaction.
 // The live, ticked items of a task, locked: R-7 unticks them when a
 // recurring task advances. The caller holds the task's lock already.
 func (q *Queries) LockDoneItemIDsOfTask(ctx context.Context, taskID uuid.UUID) ([]uuid.UUID, error) {
@@ -164,6 +170,8 @@ ORDER BY id
 FOR UPDATE
 `
 
+// Not filtered by user: the caller first locks the row this one belongs
+// to through a *ForUser query (list_members) in the same transaction.
 // The live items of several tasks, locked before a seq is taken: a
 // restore writes them again (D-45).
 func (q *Queries) LockLiveItemIDsOfTasks(ctx context.Context, taskIds []uuid.UUID) ([]uuid.UUID, error) {
@@ -220,6 +228,8 @@ type RewriteChecklistItemsParams struct {
 	Seqs []int64
 }
 
+// Not filtered by user: the caller first locks the row this one belongs
+// to through a *ForUser query (list_members) in the same transaction.
 // Writes items again, content unchanged, each with a new version and its
 // own seq: a restored task's items reach the devices that synced while it
 // was deleted (D-45). ids and seqs are parallel arrays.
@@ -243,6 +253,8 @@ type UncheckItemsParams struct {
 	Seqs []int64
 }
 
+// Not filtered by user: the caller first locks the row this one belongs
+// to through a *ForUser query (list_members) in the same transaction.
 // Unticks items, each with its own new seq (D-07).
 // Two unnest calls in one SELECT list advance together, pairing ids[i]
 // with seqs[i].
@@ -269,6 +281,8 @@ type UpdateChecklistItemParams struct {
 	ID        uuid.UUID
 }
 
+// Not filtered by user: the caller first locks the row this one belongs
+// to through a *ForUser query (list_members) in the same transaction.
 func (q *Queries) UpdateChecklistItem(ctx context.Context, arg UpdateChecklistItemParams) error {
 	_, err := q.db.Exec(ctx, updateChecklistItem,
 		arg.Title,

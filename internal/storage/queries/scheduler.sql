@@ -38,6 +38,18 @@ ON CONFLICT ON CONSTRAINT notification_deliveries_once DO NOTHING;
 -- whoever registers it (D-32), so the delivery is checked against the
 -- device's current owner: every access to a task goes through
 -- list_members (SPEC section 7).
+--
+-- That check must still hold when the message leaves, so the rows it
+-- reads stay locked until the transaction ends, after the push service
+-- has answered: the device (a registration that would move it to another
+-- user or change its keys waits) and the task (its list, status and due
+-- fields cannot change meanwhile). A plain join only reads them: a
+-- registration committed during the send would receive the previous
+-- owner's task. SKIP LOCKED on every locked row: a delivery whose device
+-- or task is being written waits for the next tick, and the scheduler
+-- itself never waits for a lock. The device takes FOR UPDATE because this
+-- transaction updates it after the send; two schedulers each holding a
+-- share lock on it and upgrading would deadlock.
 SELECT d.id, d.reminder_id, d.fire_at, d.attempts,
        d.occurrence_due_date, d.occurrence_due_time, d.occurrence_due_tz,
        s.id AS subscription_id, s.endpoint, s.p256dh, s.auth,
@@ -56,7 +68,8 @@ JOIN users u ON u.id = s.user_id
 WHERE d.status = 'pending' AND d.next_attempt_at <= @now
 ORDER BY d.next_attempt_at
 LIMIT 1
-FOR UPDATE OF d SKIP LOCKED;
+FOR UPDATE OF d, s SKIP LOCKED
+FOR SHARE OF t SKIP LOCKED;
 
 -- name: MarkDeliverySent :exec
 UPDATE notification_deliveries

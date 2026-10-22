@@ -61,6 +61,16 @@ func TestAuthorizationMatrix(t *testing.T) {
 	a.complete(t, alice, completed.Id, completion, "")
 	deletedList := a.createList(t, alice, "Deleted", "c0")
 	a.call(t, alice, http.MethodDelete, "/lists/"+deletedList.Id.String(), "")
+	// A deleted task with its children, and a deleted tag: for their
+	// owner a repeated DELETE answers 204 (D-22); for bob they are as
+	// unknown as live ones.
+	deletedTask := a.taskWith(t, alice, list.Id, "secret too", "b", `,"due_date":"2026-10-10"`)
+	deletedItem := a.createItem(t, alice, deletedTask, "item", "a")
+	deletedReminder := a.addReminder(t, alice, deletedTask, relativeBody(t, 0), http.StatusCreated)
+	a.call(t, alice, http.MethodDelete, "/tasks/"+deletedTask.String(), "")
+	deletedTag := a.createTag(t, alice, "gone")
+	a.call(t, alice, http.MethodDelete, "/tags/"+deletedTag.Id.String(), "")
+	device := a.register(t, alice, newID(t), a.push.NewDevice(t, "alice's phone"), http.StatusCreated)
 	before := a.snapshot(t, alice)
 
 	day := "completed_from=" + url.QueryEscape(testStart.Add(-time.Hour).Format(time.RFC3339)) +
@@ -92,6 +102,25 @@ func TestAuthorizationMatrix(t *testing.T) {
 		{http.MethodGet, "/tasks?tag_id=" + tag.Id.String(), ""},
 		{http.MethodGet, "/completions?" + day + "&list_id=" + alice.inboxID.String(), ""},
 		{http.MethodGet, "/completions?" + day + "&tag_id=" + tag.Id.String(), ""},
+
+		{http.MethodGet, "/lists/" + deletedList.Id.String(), ""},
+		{http.MethodPatch, "/lists/" + deletedList.Id.String(), `{"name":"x"}`},
+		{http.MethodDelete, "/lists/" + deletedList.Id.String(), ""},
+		{http.MethodGet, "/tasks/" + deletedTask.String(), ""},
+		{http.MethodPatch, "/tasks/" + deletedTask.String(), `{"title":"x"}`},
+		{http.MethodDelete, "/tasks/" + deletedTask.String(), ""},
+		{http.MethodPost, "/tasks/" + deletedTask.String() + "/restore", ""},
+		{http.MethodGet, "/tasks/" + deletedTask.String() + "/completions", ""},
+		{http.MethodPatch, "/checklist-items/" + deletedItem.Id.String(), `{"is_done":true}`},
+		{http.MethodDelete, "/checklist-items/" + deletedItem.Id.String(), ""},
+		{http.MethodPatch, "/reminders/" + deletedReminder.Id.String(), `{"offset_minutes":5}`},
+		{http.MethodDelete, "/reminders/" + deletedReminder.Id.String(), ""},
+		{http.MethodPatch, "/tags/" + deletedTag.Id.String(), `{"name":"x"}`},
+		{http.MethodDelete, "/tags/" + deletedTag.Id.String(), ""},
+		{http.MethodGet, "/tasks?tag_id=" + deletedTag.Id.String(), ""},
+
+		{http.MethodDelete, "/push/subscriptions/" + device.Id.String(), ""},
+		{http.MethodPost, "/push/subscriptions/" + device.Id.String() + "/test", ""},
 	}
 	for _, op := range notFound {
 		t.Run(op.method+" "+op.path, func(t *testing.T) {
@@ -110,21 +139,41 @@ func TestAuthorizationMatrix(t *testing.T) {
 		http.StatusUnprocessableEntity, ProblemCodeValidationFailed)
 	wantProblem(t, a.call(t, bob, http.MethodPost, "/tasks", newTaskBody(task, bob.inboxID, "x")),
 		http.StatusConflict, ProblemCodeConflict)
+	// A completion_id is a client id like any other (D-23): completing his
+	// own task with one of alice's is a conflict, and changes neither.
+	wantProblem(t, a.call(t, bob, http.MethodPost, "/tasks/"+bobsTask.Id.String()+"/complete", fmt.Sprintf(`{"completion_id":%q}`, completion)),
+		http.StatusConflict, ProblemCodeConflict)
+	// Undoing it from his task is a no-op, as for an unknown id.
+	if got := a.uncomplete(t, bob, bobsTask.Id, completion); got.Applied {
+		t.Errorf("bob undid alice's completion: %+v", got)
+	}
 
 	if after := a.snapshot(t, alice); after != before {
 		t.Errorf("bob changed alice's data:\nbefore %s\nafter  %s", before, after)
+	}
+	// Devices are not syncable rows; alice's is still hers.
+	devices := decode[ListPushSubscriptions200JSONResponse](t, a.call(t, alice, http.MethodGet, "/push/subscriptions", ""), http.StatusOK)
+	if len(devices.Items) != 1 || devices.Items[0].Id != device.Id {
+		t.Errorf("alice's devices = %+v", devices.Items)
+	}
+	a.devices.Wait()
+	if got := len(a.push.Messages()); got != 0 {
+		t.Errorf("bob's test request reached alice's device: %d message(s)", got)
 	}
 
 	// None of bob's listings mentions anything of alice's. Each answers
 	// 200 and, where bob has data, shows it: an error response mentions
 	// nobody's data and would pass the check below on its own.
 	bobsTag := a.createTag(t, bob, "bob")
+	bobsDevice := a.register(t, bob, newID(t), a.push.NewDevice(t, "bob's phone"), http.StatusCreated)
 	secrets := []string{list.Id.String(), tag.Id.String(), task.String(), item.Id.String(),
-		completed.Id.String(), alice.inboxID.String(), "secret"}
+		completed.Id.String(), alice.inboxID.String(), deletedTask.String(), deletedItem.Id.String(),
+		deletedReminder.Id.String(), deletedTag.Id.String(), device.Id.String(), "secret"}
 	for path, own := range map[string][]uuid.UUID{
 		"/lists":              {bob.inboxID},
 		"/lists?deleted=true": nil,
 		"/tags":               {bobsTag.Id},
+		"/push/subscriptions": {bobsDevice.Id},
 		"/tasks":              {bobsTask.Id},
 		"/tasks?deleted=true": nil,
 		"/tasks?status=done":  nil,

@@ -7,6 +7,8 @@ SELECT * FROM tags WHERE id = @id AND owner_id = @owner_id;
 SELECT * FROM tags WHERE id = @id AND owner_id = @owner_id FOR UPDATE;
 
 -- name: TagExists :one
+-- Not filtered by user on purpose: an id taken by another user is a
+-- conflict (D-23), so creation must see every row.
 SELECT EXISTS (SELECT 1 FROM tags WHERE id = @id);
 
 -- name: InsertTag :exec
@@ -14,6 +16,8 @@ INSERT INTO tags (id, owner_id, name, color, version, seq, created_at, updated_a
 VALUES (@id, @owner_id, @name, @color, 1, @seq, @now, @now);
 
 -- name: UpdateTag :exec
+-- Not filtered by user: the caller first locks the row this one belongs
+-- to through a *ForUser query (list_members) in the same transaction.
 UPDATE tags
 SET name = @name, color = @color, version = @version, seq = @seq,
     updated_at = @updated_at, deleted_at = @deleted_at
@@ -46,6 +50,8 @@ ORDER BY t.id
 FOR UPDATE OF t;
 
 -- name: RemoveTagFromTasks :exec
+-- Not filtered by user: the caller first locks the row this one belongs
+-- to through a *ForUser query (list_members) in the same transaction.
 UPDATE tasks t
 SET tag_ids = array_remove(t.tag_ids, @tag_id::uuid), version = t.version + 1,
     seq = v.seq, updated_at = @now

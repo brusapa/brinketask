@@ -54,7 +54,11 @@ export function DueEditor({
         <CalendarDays size={16} strokeWidth={1.5} aria-hidden="true" />
         <span>{label}</span>
       </Button>
-      <Popover className="popover due-popover" placement="bottom start">
+      {/* containerPadding is the distance React Aria keeps between the
+          popover and the screen's edges (12 px by default). On a 320 px
+          phone the popover needs the whole width for 44 px days (app.css),
+          and would otherwise be pushed past the right edge. */}
+      <Popover className="popover due-popover" placement="bottom start" containerPadding={0}>
         <Dialog className="dialog" aria-label={t("due.title")}>
           {({ close }) => <DueForm task={task} today={today} onPatch={onPatch} onDone={close} />}
         </Dialog>

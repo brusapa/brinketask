@@ -1,7 +1,11 @@
 -- name: GetCompletion :one
+-- Not filtered by user: the caller first locks the row this one belongs
+-- to through a *ForUser query (list_members) in the same transaction.
 SELECT * FROM task_completions WHERE id = @id;
 
 -- name: LatestCompletionID :one
+-- Not filtered by user: the caller first locks the row this one belongs
+-- to through a *ForUser query (list_members) in the same transaction.
 -- The record uncomplete may undo: the newest one not undone (D-39).
 SELECT id FROM task_completions
 WHERE task_id = @task_id AND undone_at IS NULL
@@ -9,6 +13,8 @@ ORDER BY task_seq DESC
 LIMIT 1;
 
 -- name: InsertCompletion :exec
+-- Not filtered by user: the caller first locks the row this one belongs
+-- to through a *ForUser query (list_members) in the same transaction.
 INSERT INTO task_completions (
     id, task_id, kind, occurrence_due_date, completed_at, prev_due_date, prev_due_time,
     prev_recurrence_done_count, prev_status, task_seq
@@ -18,9 +24,13 @@ INSERT INTO task_completions (
 );
 
 -- name: MarkCompletionUndone :exec
+-- Not filtered by user: the caller first locks the row this one belongs
+-- to through a *ForUser query (list_members) in the same transaction.
 UPDATE task_completions SET undone_at = @now WHERE id = @id;
 
 -- name: ListTaskCompletions :many
+-- Not filtered by user: the caller first locks the row this one belongs
+-- to through a *ForUser query (list_members) in the same transaction.
 -- A task's history, newest first, without undone records.
 SELECT * FROM task_completions
 WHERE task_id = @task_id AND undone_at IS NULL

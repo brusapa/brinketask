@@ -81,6 +81,30 @@ describe("due date", () => {
     expect(screen.queryByRole("button", { name: "Clear" })).toBeNull();
   });
 
+  // D-26: the way to clear a repeating task's date never leaves its rule
+  // behind: the rule goes first, then the date can be cleared.
+  test("a repeating task's date is cleared after its repetition", async () => {
+    const { panel, server, user } = await openDetail({
+      due_date: "2026-10-12",
+      rrule: "FREQ=DAILY",
+    });
+    await user.click(within(panel).getByRole("button", { name: /^Repeat: / }));
+    const repeat = await screen.findByRole("dialog", { name: "Repeat" });
+    await user.click(within(repeat).getByRole("button", { name: /Daily/ }));
+    await user.click(await screen.findByRole("option", { name: "Does not repeat" }));
+    await user.click(within(repeat).getByRole("button", { name: "Save" }));
+    await within(panel).findByRole("button", { name: "Repeat: Does not repeat" });
+
+    await user.click(within(panel).getByRole("button", { name: /^Due: / }));
+    await user.click(await screen.findByRole("button", { name: "Clear" }));
+    await waitFor(() => {
+      expect(server.calls("PATCH", `/tasks/${taskId}`).map((c) => c.body)).toEqual([
+        { rrule: null },
+        { due_date: null, due_time: null, due_tz: null },
+      ]);
+    });
+  });
+
   // D-26: clearing the date clears the fields that depend on it.
   test("clearing removes date, time and zone in one patch", async () => {
     const { panel, server, user } = await openDetail({
@@ -234,4 +258,48 @@ test("a refreshed task is not overwritten by the fields it was shown in", async 
   ).toBe("new notes");
   await user.tab();
   expect(server.calls("PATCH", `/tasks/${taskId}`)).toEqual([]);
+});
+
+// D-05, D-31: an editor already open, and left untouched, while a focus
+// refresh brings another device's description shows that description and
+// writes nothing back over it when it closes.
+test("a clean description editor open during a refresh saves nothing", async () => {
+  const { panel, server, user } = await openDetail({ description: "old notes" });
+  await user.click(within(panel).getByRole("button", { name: "Edit description" }));
+  const editor = within(panel).getByRole<HTMLTextAreaElement>("textbox", { name: "Description" });
+  expect(editor.value).toBe("old notes");
+
+  const after = task({
+    id: taskId,
+    list_id: inboxId,
+    title: "Plan holiday",
+    description: "new notes",
+    version: 2,
+  });
+  server.on("GET", "/sync/changes", json(page({ tasks: [after], next_cursor: "c2" })));
+  fireEvent(window, new Event("focus"));
+  // The title field shows the synced title once the refresh is applied.
+  await waitFor(() => {
+    expect(within(panel).getByRole<HTMLTextAreaElement>("textbox", { name: "Title" }).value).toBe(
+      "Plan holiday",
+    );
+  });
+  expect(editor.value).toBe("new notes");
+
+  await user.tab();
+  expect(server.calls("PATCH", `/tasks/${taskId}`)).toEqual([]);
+});
+
+test("a typed description is saved when the editor loses focus", async () => {
+  const { panel, server, user } = await openDetail({ description: "old notes" });
+  await user.click(within(panel).getByRole("button", { name: "Edit description" }));
+  const editor = within(panel).getByRole("textbox", { name: "Description" });
+  await user.clear(editor);
+  await user.type(editor, "packing list");
+  await user.tab();
+  await waitFor(() => {
+    expect(server.calls("PATCH", `/tasks/${taskId}`).map((c) => c.body)).toEqual([
+      { description: "packing list" },
+    ]);
+  });
 });
