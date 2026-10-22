@@ -511,6 +511,110 @@ func TestReassignedDeviceGetsNoReminderOfPreviousOwner(t *testing.T) {
 	}
 }
 
+// heldSender stops every send until release is closed, after telling
+// entered; then the real sender sends. It holds a delivery between its
+// authorization check and the push service's answer.
+type heldSender struct {
+	next    notify.Sender
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (h *heldSender) Send(ctx context.Context, sub webpush.Subscription, payload []byte) error {
+	h.entered <- struct{}{}
+	<-h.release
+	return h.next.Send(ctx, sub, payload)
+}
+
+// SPEC section 7, D-32: the owner a delivery was checked against stays the
+// owner until its message has left. Bob registering alice's browser while
+// her reminder is being sent waits for that send to end; were it to
+// commit first, the browser, now his, would show alice's task.
+func TestRegistrationWaitsForADeliveryInFlight(t *testing.T) {
+	e := setup(t)
+	ctx := context.Background()
+	sub := e.push.NewDevice(t, "shared")
+	if _, _, err := e.devices.Register(ctx, e.user, notify.NewDevice{
+		ID: uuid.New(), Endpoint: sub.Endpoint, P256dh: sub.P256dh, Auth: sub.Auth,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	e.task(t, "Alice secret", start)
+	bob, err := account.NewService(e.pool, e.clock).SignIn(ctx, account.Identity{Issuer: "https://id.example.com", Subject: "bob"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	held := &heldSender{next: notify.SenderOf(e.scheduler), entered: make(chan struct{}, 1), release: make(chan struct{})}
+	scheduler := notify.NewScheduler(e.pool, e.clock, e.tasks, held, 12*time.Hour, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	tickErr := make(chan error, 1)
+	go func() { tickErr <- scheduler.Tick(ctx) }()
+	// Real time: this waits for the other goroutine, not for domain code.
+	select {
+	case <-held.entered:
+	case err := <-tickErr:
+		t.Fatalf("the tick ended without sending: %v", err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("the tick did not reach the push service")
+	}
+
+	// alice's delivery passed its check and is on its way out.
+	registered := make(chan error, 1)
+	go func() {
+		_, _, err := e.devices.Register(ctx, bob, notify.NewDevice{
+			ID: uuid.New(), Endpoint: sub.Endpoint, P256dh: sub.P256dh, Auth: sub.Auth,
+		})
+		registered <- err
+	}()
+	waitForRegisterOrWaiters(t, e, registered)
+	select {
+	case err := <-registered:
+		close(held.release)
+		<-tickErr
+		t.Fatalf("bob's registration (err %v) committed while alice's reminder was being sent to the browser", err)
+	default:
+	}
+
+	close(held.release)
+	if err := <-tickErr; err != nil {
+		t.Errorf("tick: %v", err)
+	}
+	if err := <-registered; err != nil {
+		t.Errorf("register: %v", err)
+	}
+	// The message went out while the browser was still alice's.
+	if got := len(e.push.Messages()); got != 1 {
+		t.Errorf("messages = %d, want alice's reminder once", got)
+	}
+}
+
+// waitForRegisterOrWaiters returns once a session waits for a lock, or
+// once the registration has ended (its result is put back for the caller).
+func waitForRegisterOrWaiters(t *testing.T, e *env, registered chan error) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		select {
+		case err := <-registered:
+			registered <- err
+			return
+		default:
+		}
+		var waiting int
+		err := e.pool.QueryRow(context.Background(),
+			"SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'").
+			Scan(&waiting)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if waiting >= 1 {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("the registration neither ended nor waited")
+}
+
 // D-66: a delivery waiting for a retry is skipped, not sent, once it is
 // stale: its device is disabled, its task is done, deleted or moved to
 // another occurrence (whose Complete action would act on the wrong one,
