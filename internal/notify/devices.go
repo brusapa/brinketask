@@ -215,6 +215,9 @@ const sendTimeout = 15 * time.Second
 // posts to it, so it must be https and must not name this machine or an
 // address directly, which keeps a user from pointing it at internal
 // services (SSRF). Browsers' push services all use https host names.
+// This is the early, readable refusal; the push client refuses internal
+// addresses again when it connects (webpush.NewClient), which also covers
+// names that resolve to them.
 func (d *Devices) checkEndpoint(endpoint string) error {
 	u, err := url.Parse(endpoint)
 	if err != nil || u.Host == "" {
@@ -226,8 +229,10 @@ func (d *Devices) checkEndpoint(endpoint string) error {
 	if u.Scheme != "https" {
 		return errors.New("must use https")
 	}
-	host := u.Hostname()
-	if host == "localhost" || net.ParseIP(host) != nil {
+	// Host names are case-insensitive and may end with the root's dot;
+	// every name under localhost is this machine too (RFC 6761).
+	host := strings.TrimSuffix(strings.ToLower(u.Hostname()), ".")
+	if host == "localhost" || strings.HasSuffix(host, ".localhost") || net.ParseIP(host) != nil {
 		return errors.New("must be a push service host name")
 	}
 	return nil

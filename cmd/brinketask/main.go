@@ -112,7 +112,10 @@ func run() error {
 	// Changing the profile zone or default time recomputes reminders (SPEC
 	// section 6), in the transaction of the change.
 	accounts.OnSettingsChanged(taskService.RecomputeUserReminders)
-	sender := webpush.NewSender(cfg.Push.Keys, cfg.Push.Subject, &http.Client{Timeout: 30 * time.Second}, clk)
+	// Loopback is reachable only for the end-to-end test's fake push
+	// service (D-73), which runs on 127.0.0.1.
+	pushClient := webpush.NewClient(30*time.Second, cfg.Push.TestEndpointPrefix != "")
+	sender := webpush.NewSender(cfg.Push.Keys, cfg.Push.Subject, pushClient, clk)
 	devices := notify.NewDevices(pool, clk, sender, logger)
 	if prefix := cfg.Push.TestEndpointPrefix; prefix != "" {
 		logger.Warn("PUSH_TEST_ENDPOINT_PREFIX is set: for the end-to-end test only, never in production", "prefix", prefix)
