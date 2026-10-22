@@ -308,9 +308,14 @@ func (s *Service) PatchTask(ctx context.Context, userID, id uuid.UUID, patch Tas
 		if err := s.writeTask(ctx, q, &updated); err != nil {
 			return err
 		}
-		// Due fields, status or rule may have changed (SPEC section 6).
-		if err := s.recompute(ctx, q, userID, updated, false); err != nil {
-			return err
+		// Only the inputs of the computation recompute (SPEC section 6). A
+		// recompute turns a fire instant that has just passed into null,
+		// so an edit of, say, the title between that instant and the next
+		// scheduler poll would cancel a reminder about to be sent.
+		if schedulingChanged(updated, current) {
+			if err := s.recompute(ctx, q, userID, updated, false); err != nil {
+				return err
+			}
 		}
 		task, err = withChecklist(ctx, q, updated)
 		return err
@@ -556,11 +561,17 @@ func (s *Service) writeTask(ctx context.Context, q *dbgen.Queries, task *dbgen.T
 
 // sameTask compares the fields a patch can change.
 func sameTask(a, b dbgen.Task) bool {
-	return a.ListID == b.ListID && a.Title == b.Title && a.Description == b.Description &&
-		a.Status == b.Status && a.Priority == b.Priority && a.Position == b.Position &&
-		equalDates(a.DueDate, b.DueDate) && a.DueTime == b.DueTime &&
-		equalPointers(a.DueTz, b.DueTz) && equalPointers(a.Rrule, b.Rrule) &&
+	return !schedulingChanged(a, b) && a.ListID == b.ListID && a.Title == b.Title &&
+		a.Description == b.Description && a.Priority == b.Priority && a.Position == b.Position &&
 		a.RepeatFrom == b.RepeatFrom && slices.Equal(a.TagIds, b.TagIds)
+}
+
+// schedulingChanged reports a change of what a task's reminders are
+// computed from: its due fields, its status or its rule (SPEC section 6;
+// the contract's patchTask).
+func schedulingChanged(a, b dbgen.Task) bool {
+	return !equalDates(a.DueDate, b.DueDate) || a.DueTime != b.DueTime ||
+		!equalPointers(a.DueTz, b.DueTz) || a.Status != b.Status || !equalPointers(a.Rrule, b.Rrule)
 }
 
 // equalDates compares two optional calendar dates.

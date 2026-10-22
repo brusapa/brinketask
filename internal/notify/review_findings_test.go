@@ -56,25 +56,6 @@ func TestReviewH1ReassignedDeviceGetsNoQueuedReminderOfPreviousOwner(t *testing.
 	}
 }
 
-// M4 (SPEC section 6): editing only a task's title does not cancel a
-// reminder that is due and not yet picked up by the scheduler. The title
-// is not one of the inputs that recompute next_fire_at.
-func TestReviewM4TitleEditKeepsDueReminder(t *testing.T) {
-	e := setup(t)
-	e.device(t, "phone")
-	taskID, _ := e.task(t, "Call the plumber", start.Add(time.Second))
-	e.clock.Advance(2 * time.Second) // due, but the next poll is later
-
-	title := "Call the plumber today"
-	if _, err := e.tasks.PatchTask(context.Background(), e.user, taskID, tasks.TaskPatch{Title: &title}); err != nil {
-		t.Fatal(err)
-	}
-	e.tick(t)
-	if got := len(e.push.Messages()); got != 1 {
-		t.Errorf("messages = %d, want the reminder, one second late", got)
-	}
-}
-
 // M5 (D-10): a retried delivery speaks of the occurrence its reminder
 // fired for. Once that occurrence is completed, a retry must not present
 // the next one, whose Complete action would complete it.

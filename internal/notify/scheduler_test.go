@@ -451,3 +451,25 @@ func waitForTickOrWaiters(t *testing.T, e *env, tickErr chan error, n int) {
 	}
 	t.Fatal("the tick neither ended nor waited")
 }
+
+// SPEC section 6: editing a task without touching what its reminders are
+// computed from keeps a reminder that is due and not yet picked up.
+func TestTitleEditKeepsDueReminder(t *testing.T) {
+	e := setup(t)
+	e.device(t, "phone")
+	taskID, reminderID := e.task(t, "Call the plumber", start.Add(time.Second))
+	e.clock.Advance(2 * time.Second) // due, but the next poll is later
+	_, _, _, version := e.reminderState(t, reminderID)
+
+	title := "Call the plumber today"
+	if _, err := e.tasks.PatchTask(context.Background(), e.user, taskID, tasks.TaskPatch{Title: &title}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, after := e.reminderState(t, reminderID); after != version {
+		t.Errorf("a title edit wrote the reminder: version %d, was %d", after, version)
+	}
+	e.tick(t)
+	if got := len(e.push.Messages()); got != 1 {
+		t.Errorf("messages = %d, want the reminder, one second late", got)
+	}
+}
