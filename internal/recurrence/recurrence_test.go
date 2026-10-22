@@ -69,6 +69,7 @@ func TestParseRejectsOutsideTheSubset(t *testing.T) {
 		"FREQ=MONTHLY;BYMONTHDAY=1,15",      // a single value
 		"FREQ=DAILY;COUNT=3;UNTIL=20301231", // exclusive
 		"FREQ=DAILY;COUNT=0",                // range
+		"FREQ=DAILY;COUNT=1000001",          // range
 		"FREQ=DAILY;UNTIL=20301231T235959Z", // D-59: date only
 		"FREQ=DAILY;UNTIL=20300231",         // no such date
 		"FREQ=DAILY;FREQ=WEEKLY",            // repeated part

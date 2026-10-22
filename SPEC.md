@@ -237,7 +237,7 @@ A single row holding the global `seq` counter (D-07) and `purged_up_to_seq`, the
 | `INTERVAL` | 1–999 |
 | `BYDAY` | Only with `WEEKLY`; days without ordinal prefix (`MO,WE`) |
 | `BYMONTHDAY` | Only with `MONTHLY`; a single value 1–31 or `-1` (last day) |
-| `COUNT` or `UNTIL` | Optional and mutually exclusive |
+| `COUNT` or `UNTIL` | Optional and mutually exclusive. `COUNT` is 1–1,000,000 |
 
 Any other part is rejected with 422. The start of the series (`DTSTART`) is not stored in the string: it is the due date when the rule was last set (D-56).
 

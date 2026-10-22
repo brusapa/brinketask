@@ -593,7 +593,8 @@ export interface components {
         /** @enum {string} */
         RepeatFrom: "due" | "completion";
         /**
-         * @description RFC 5545 RRULE restricted to the subset in SPEC section 5. Requires `due_date`.
+         * @description RFC 5545 RRULE restricted to the subset in SPEC section 5, e.g. INTERVAL 1-999 and
+         *     COUNT 1-1000000. Requires `due_date`.
          * @example FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE
          */
         RRule: string | null;
