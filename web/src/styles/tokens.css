@@ -6,6 +6,7 @@
   --color-bg: #ffffff;
   --color-surface: #f4f5f7;
   --color-border: #e3e6ea;
+  --color-control-outline: #848d98;
   --color-divider: #eef0f3;
   --color-text: #1c2024;
   --color-text-secondary: #414a55;
@@ -30,6 +31,7 @@
     --color-bg: #14171a;
     --color-surface: #1a1e22;
     --color-border: #2a3036;
+    --color-control-outline: #6f7985;
     --color-divider: #22272c;
     --color-text: #e6e8eb;
     --color-text-secondary: #c3cad2;

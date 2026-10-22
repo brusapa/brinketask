@@ -65,7 +65,8 @@ Sizes are font-size / line-height in px.
 |---|---|---|
 | Background | `#FFFFFF` | `#14171A` |
 | Surface (sidebar, quick-add field) | `#F4F5F7` | `#1A1E22` |
-| Border (panes, inputs) | `#E3E6EA` | `#2A3036` |
+| Border (panes, overlays) | `#E3E6EA` | `#2A3036` |
+| Control outline (input and search fields) | `#848D98` | `#6F7985` |
 | Row divider | `#EEF0F3` | `#22272C` |
 | Text | `#1C2024` | `#E6E8EB` |
 | Text, secondary (description, selected-row meta) | `#414A55` | `#C3CAD2` |
