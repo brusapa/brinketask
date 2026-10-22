@@ -120,6 +120,7 @@ export interface paths {
         head?: never;
         /**
          * @description `status` accepts only `open` and `dropped` here; use /complete for `done`.
+         *     On a `done` task, changing `rrule` or `repeat_from` answers 409 (SPEC D-25).
          *     Changing due fields, `rrule` or `status` recomputes reminders.
          */
         patch: operations["patchTask"];

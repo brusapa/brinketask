@@ -282,6 +282,13 @@ func (s *Service) PatchTask(ctx context.Context, userID, id uuid.UUID, patch Tas
 			updated.Rrule = rule
 		}
 		updateSeries(&updated, current)
+		// D-25: undoing a completion restores the due date it saved, not the
+		// rule; a rule added after completing would outlive the date it
+		// needs. The recurrence of a done task changes after reopening it.
+		if current.Status == StatusDone &&
+			(!equalPointers(updated.Rrule, current.Rrule) || updated.RepeatFrom != current.RepeatFrom) {
+			return conflict("a completed task is reopened with uncomplete before its recurrence changes")
+		}
 		if patch.Status != nil && *patch.Status != current.Status {
 			if current.Status == StatusDone {
 				return conflict("a completed task is reopened with uncomplete")

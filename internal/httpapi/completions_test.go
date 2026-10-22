@@ -246,3 +246,27 @@ func TestTaskCompletionHistory(t *testing.T) {
 		t.Errorf("second page = %+v", rest)
 	}
 }
+
+// D-25: a done task keeps its recurrence until it is reopened, since undo
+// restores the saved date but not the rule. Its date can still change.
+func TestRecurrenceOfDoneTaskIsKept(t *testing.T) {
+	a := newTestApp(t)
+	alice := a.signUp(t, "alice")
+	task := a.createTask(t, alice, alice.inboxID, "Undated")
+	completionID := newID(t)
+	a.complete(t, alice, task.Id, completionID, "")
+	path := "/tasks/" + task.Id.String()
+
+	wantProblem(t, a.call(t, alice, http.MethodPatch, path, `{"due_date":"2026-11-01","rrule":"FREQ=DAILY"}`),
+		http.StatusConflict, ProblemCodeConflict)
+	wantProblem(t, a.call(t, alice, http.MethodPatch, path, `{"repeat_from":"completion"}`),
+		http.StatusConflict, ProblemCodeConflict)
+	// The current values are no change.
+	decode[Task](t, a.call(t, alice, http.MethodPatch, path, `{"rrule":null,"repeat_from":"due"}`), http.StatusOK)
+	decode[Task](t, a.call(t, alice, http.MethodPatch, path, `{"due_date":"2026-11-01"}`), http.StatusOK)
+
+	result := a.uncomplete(t, alice, task.Id, completionID)
+	if !result.Applied || !result.Task.DueDate.IsNull() || result.Task.Status != TaskStatusOpen {
+		t.Errorf("after undo: %+v", result.Task)
+	}
+}
