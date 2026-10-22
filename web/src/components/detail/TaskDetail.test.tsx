@@ -1,8 +1,8 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, test } from "vitest";
 
 import { json, noContent } from "../../test/fakeFetch";
-import { item, list, tag, task } from "../../test/fixtures";
+import { item, list, page, tag, task } from "../../test/fixtures";
 import { inboxId, renderApp } from "../../test/render";
 
 const taskId = "00000000-0000-7000-8000-0000000000c1";
@@ -70,6 +70,15 @@ describe("due date", () => {
         due_date: "2026-10-10",
       });
     });
+  });
+
+  // D-26: a rule needs a date, so a repeating task's date is not cleared
+  // here; the Repeat field removes the repetition first.
+  test("a repeating task offers no Clear", async () => {
+    const { panel, user } = await openDetail({ due_date: "2026-10-12", rrule: "FREQ=DAILY" });
+    await user.click(within(panel).getByRole("button", { name: /^Due: / }));
+    expect(await screen.findByRole("button", { name: "Done" })).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Clear" })).toBeNull();
   });
 
   // D-26: clearing the date clears the fields that depend on it.
@@ -198,4 +207,31 @@ test("the description is shown as Markdown without raw HTML", async () => {
   expect(link.getAttribute("rel")).toBe("noopener noreferrer");
   expect(link.getAttribute("target")).toBe("_blank");
   expect(panel.querySelector("img")).toBeNull();
+});
+
+// D-05, D-31: the panel shows what a focus refresh brought, and visiting
+// its fields without typing writes nothing back over another device's edit.
+test("a refreshed task is not overwritten by the fields it was shown in", async () => {
+  const { panel, server, user } = await openDetail({ description: "old notes" });
+  const after = task({
+    id: taskId,
+    list_id: inboxId,
+    title: "Plan holiday",
+    description: "new notes",
+    version: 2,
+  });
+  server.on("GET", "/sync/changes", json(page({ tasks: [after], next_cursor: "c2" })));
+  fireEvent(window, new Event("focus"));
+  await within(panel).findByText("new notes");
+  const title = within(panel).getByRole<HTMLTextAreaElement>("textbox", { name: "Title" });
+  expect(title.value).toBe("Plan holiday");
+
+  await user.click(title);
+  await user.tab();
+  await user.click(within(panel).getByRole("button", { name: "Edit description" }));
+  expect(
+    within(panel).getByRole<HTMLTextAreaElement>("textbox", { name: "Description" }).value,
+  ).toBe("new notes");
+  await user.tab();
+  expect(server.calls("PATCH", `/tasks/${taskId}`)).toEqual([]);
 });

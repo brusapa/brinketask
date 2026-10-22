@@ -191,24 +191,30 @@ function DetailPanel({ task, onClose }: { task: TaskRow; onClose: () => void }) 
   );
 }
 
-/** The title, saved when the field loses focus or on Enter. */
+/**
+ * The title, saved when the field loses focus or on Enter. `draft` holds
+ * what the user typed and is null while they type nothing: the field then
+ * shows the task's current title, also after a sync brought a new one
+ * (D-31). useState's argument is read only when the component mounts, so
+ * a copy of the title kept there would go stale and be saved back.
+ */
 function TitleField({ task, onPatch }: { task: TaskRow; onPatch: (patch: TaskPatch) => void }) {
   const { t } = useTranslation();
-  const [title, setTitle] = useState(task.title);
+  const [draft, setDraft] = useState<string | null>(null);
   const commit = () => {
-    const trimmed = title.trim();
-    if (trimmed === "" || trimmed === task.title) {
-      setTitle(task.title);
-      return;
+    if (draft === null) return;
+    const trimmed = draft.trim();
+    setDraft(null);
+    if (trimmed !== "" && trimmed !== task.title) {
+      onPatch({ title: trimmed });
     }
-    onPatch({ title: trimmed });
   };
   return (
     <TextField
       className="detail-title"
       aria-label={t("detail.title")}
-      value={title}
-      onChange={setTitle}
+      value={draft ?? task.title}
+      onChange={setDraft}
       onBlur={commit}
       onKeyDown={(event) => {
         if (event.key === "Enter") {
@@ -237,7 +243,9 @@ function DescriptionField({
 }) {
   const { t } = useTranslation();
   const [editing, setEditing] = useState(false);
-  const [text, setText] = useState(task.description);
+  // Set from the task's current description each time editing starts, not
+  // when the component mounts: a sync may have changed it since (D-31).
+  const [text, setText] = useState("");
 
   if (editing) {
     return (
@@ -274,7 +282,13 @@ function DescriptionField({
           </Markdown>
         </div>
       )}
-      <Button className="link-button" onPress={() => setEditing(true)}>
+      <Button
+        className="link-button"
+        onPress={() => {
+          setText(task.description);
+          setEditing(true);
+        }}
+      >
         {task.description === "" ? t("detail.addDescription") : t("detail.editDescription")}
       </Button>
     </div>
