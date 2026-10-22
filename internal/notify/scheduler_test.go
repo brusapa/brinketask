@@ -473,3 +473,40 @@ func TestTitleEditKeepsDueReminder(t *testing.T) {
 		t.Errorf("messages = %d, want the reminder, one second late", got)
 	}
 }
+
+// SPEC section 7, D-32: a browser that moves to another user while a
+// delivery of the previous owner's reminder waits for a retry does not
+// show that reminder; the delivery is skipped.
+func TestReassignedDeviceGetsNoReminderOfPreviousOwner(t *testing.T) {
+	e := setup(t)
+	ctx := context.Background()
+	sub := e.push.NewDevice(t, "shared")
+	if _, _, err := e.devices.Register(ctx, e.user, notify.NewDevice{
+		ID: uuid.New(), Endpoint: sub.Endpoint, P256dh: sub.P256dh, Auth: sub.Auth,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	e.task(t, "Alice secret", start)
+	e.push.Answer("shared", http.StatusServiceUnavailable)
+	e.tick(t) // the first attempt fails; a retry is pending
+
+	// Bob signs in on the same browser, which registers it again.
+	bob, err := account.NewService(e.pool, e.clock).SignIn(ctx, account.Identity{Issuer: "https://id.example.com", Subject: "bob"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := e.devices.Register(ctx, bob, notify.NewDevice{
+		ID: uuid.New(), Endpoint: sub.Endpoint, P256dh: sub.P256dh, Auth: sub.Auth,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	e.clock.Advance(30 * time.Second)
+	e.tick(t)
+	if got := len(e.push.Messages()); got != 0 {
+		t.Errorf("bob's browser received %d message(s) of alice's", got)
+	}
+	if d := e.deliveries(t); d["skipped"] != 1 || len(d) != 1 {
+		t.Errorf("deliveries = %v", d)
+	}
+}

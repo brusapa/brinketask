@@ -24,11 +24,15 @@ VALUES (@reminder_id, @fire_at, @subscription_id, @status, @next_attempt_at, @no
 ON CONFLICT ON CONSTRAINT notification_deliveries_once DO NOTHING;
 
 -- name: ClaimDueDelivery :one
--- One pending delivery that is due, with what its message needs.
+-- One pending delivery that is due, with what its message needs and
+-- whether it may still go out. A device moves to whoever registers it
+-- (D-32), so the delivery is checked against the device's current owner:
+-- every access to a task goes through list_members (SPEC section 7).
 SELECT d.id, d.reminder_id, d.fire_at, d.attempts,
        s.id AS subscription_id, s.endpoint, s.p256dh, s.auth,
        t.id AS task_id, t.title, t.due_date, t.due_time, t.due_tz,
-       l.name AS list_name, l.is_inbox, u.timezone
+       l.name AS list_name, l.is_inbox, u.timezone,
+       EXISTS (SELECT 1 FROM list_members m WHERE m.list_id = t.list_id AND m.user_id = s.user_id) AS recipient_is_member
 FROM notification_deliveries d
 JOIN push_subscriptions s ON s.id = d.subscription_id
 JOIN reminders r ON r.id = d.reminder_id
@@ -53,4 +57,10 @@ WHERE id = @id;
 -- name: MarkDeliveryFailed :exec
 UPDATE notification_deliveries
 SET status = 'failed', attempts = attempts + 1, next_attempt_at = NULL, error = @error
+WHERE id = @id;
+
+-- name: MarkDeliverySkipped :exec
+-- A delivery that may no longer go out; reason says why, for operators.
+UPDATE notification_deliveries
+SET status = 'skipped', next_attempt_at = NULL, error = @reason
 WHERE id = @id;

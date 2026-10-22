@@ -5,7 +5,6 @@ package notify_test
 // finding is fixed.
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -15,46 +14,9 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/brusapa/brinketask/internal/account"
 	"github.com/brusapa/brinketask/internal/notify"
 	"github.com/brusapa/brinketask/internal/tasks"
 )
-
-// H1 (SPEC section 7, D-32): when a browser moves to another user, a
-// delivery still queued for the previous owner's reminder is not sent to
-// it. Otherwise the new user's browser shows the previous owner's task.
-func TestReviewH1ReassignedDeviceGetsNoQueuedReminderOfPreviousOwner(t *testing.T) {
-	e := setup(t)
-	ctx := context.Background()
-	sub := e.push.NewDevice(t, "shared")
-	if _, _, err := e.devices.Register(ctx, e.user, notify.NewDevice{
-		ID: uuid.New(), Endpoint: sub.Endpoint, P256dh: sub.P256dh, Auth: sub.Auth,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	e.task(t, "Alice secret", start)
-	e.push.Answer("shared", http.StatusServiceUnavailable)
-	e.tick(t) // the first attempt fails; a retry is pending
-
-	// Bob signs in on the same browser, which registers again (D-32).
-	bob, err := account.NewService(e.pool, e.clock).SignIn(ctx, account.Identity{Issuer: "https://id.example.com", Subject: "bob"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, _, err := e.devices.Register(ctx, bob, notify.NewDevice{
-		ID: uuid.New(), Endpoint: sub.Endpoint, P256dh: sub.P256dh, Auth: sub.Auth,
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	e.clock.Advance(30 * time.Second)
-	e.tick(t)
-	for _, m := range e.push.Messages() {
-		if bytes.Contains(m.Payload, []byte("Alice secret")) {
-			t.Errorf("bob's device received alice's reminder: %s", m.Payload)
-		}
-	}
-}
 
 // M5 (D-10): a retried delivery speaks of the occurrence its reminder
 // fired for. Once that occurrence is completed, a retry must not present

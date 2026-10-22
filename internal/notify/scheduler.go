@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -195,6 +196,11 @@ func (s *Scheduler) sendDue(ctx context.Context) (int, error) {
 }
 
 func (s *Scheduler) send(ctx context.Context, q *dbgen.Queries, d dbgen.ClaimDueDeliveryRow) error {
+	if !d.RecipientIsMember {
+		// The device moved to another user after the reminder fired (D-32):
+		// that user must not see the task (SPEC section 7).
+		return s.skip(ctx, q, d.ID, "the device belongs to a user without access to the task")
+	}
 	payload, err := reminderPayload(d.TaskID, d.ReminderID, d.Title, d.ListName, d.IsInbox,
 		d.DueDate, d.DueTime, d.DueTz, d.Timezone, d.FireAt)
 	if err != nil {
@@ -233,4 +239,11 @@ func (s *Scheduler) send(ctx context.Context, q *dbgen.Queries, d dbgen.ClaimDue
 		next := now.Add(firstRetry << (attempts - 1))
 		return q.MarkDeliveryRetry(ctx, dbgen.MarkDeliveryRetryParams{NextAttemptAt: &next, Error: &message, ID: d.ID})
 	}
+}
+
+// skip ends a pending delivery without sending it; reason, kept in the
+// delivery's error column, names no user data.
+func (s *Scheduler) skip(ctx context.Context, q *dbgen.Queries, id uuid.UUID, reason string) error {
+	s.observer.Delivery(statusSkipped)
+	return q.MarkDeliverySkipped(ctx, dbgen.MarkDeliverySkippedParams{Reason: &reason, ID: id})
 }

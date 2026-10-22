@@ -46,7 +46,8 @@ const claimDueDelivery = `-- name: ClaimDueDelivery :one
 SELECT d.id, d.reminder_id, d.fire_at, d.attempts,
        s.id AS subscription_id, s.endpoint, s.p256dh, s.auth,
        t.id AS task_id, t.title, t.due_date, t.due_time, t.due_tz,
-       l.name AS list_name, l.is_inbox, u.timezone
+       l.name AS list_name, l.is_inbox, u.timezone,
+       EXISTS (SELECT 1 FROM list_members m WHERE m.list_id = t.list_id AND m.user_id = s.user_id) AS recipient_is_member
 FROM notification_deliveries d
 JOIN push_subscriptions s ON s.id = d.subscription_id
 JOIN reminders r ON r.id = d.reminder_id
@@ -60,25 +61,29 @@ FOR UPDATE OF d SKIP LOCKED
 `
 
 type ClaimDueDeliveryRow struct {
-	ID             uuid.UUID
-	ReminderID     uuid.UUID
-	FireAt         time.Time
-	Attempts       int32
-	SubscriptionID uuid.UUID
-	Endpoint       string
-	P256dh         string
-	Auth           string
-	TaskID         uuid.UUID
-	Title          string
-	DueDate        *time.Time
-	DueTime        pgtype.Time
-	DueTz          *string
-	ListName       string
-	IsInbox        bool
-	Timezone       string
+	ID                uuid.UUID
+	ReminderID        uuid.UUID
+	FireAt            time.Time
+	Attempts          int32
+	SubscriptionID    uuid.UUID
+	Endpoint          string
+	P256dh            string
+	Auth              string
+	TaskID            uuid.UUID
+	Title             string
+	DueDate           *time.Time
+	DueTime           pgtype.Time
+	DueTz             *string
+	ListName          string
+	IsInbox           bool
+	Timezone          string
+	RecipientIsMember bool
 }
 
-// One pending delivery that is due, with what its message needs.
+// One pending delivery that is due, with what its message needs and
+// whether it may still go out. A device moves to whoever registers it
+// (D-32), so the delivery is checked against the device's current owner:
+// every access to a task goes through list_members (SPEC section 7).
 func (q *Queries) ClaimDueDelivery(ctx context.Context, now *time.Time) (ClaimDueDeliveryRow, error) {
 	row := q.db.QueryRow(ctx, claimDueDelivery, now)
 	var i ClaimDueDeliveryRow
@@ -99,6 +104,7 @@ func (q *Queries) ClaimDueDelivery(ctx context.Context, now *time.Time) (ClaimDu
 		&i.ListName,
 		&i.IsInbox,
 		&i.Timezone,
+		&i.RecipientIsMember,
 	)
 	return i, err
 }
@@ -227,5 +233,22 @@ type MarkDeliverySentParams struct {
 
 func (q *Queries) MarkDeliverySent(ctx context.Context, arg MarkDeliverySentParams) error {
 	_, err := q.db.Exec(ctx, markDeliverySent, arg.Now, arg.ID)
+	return err
+}
+
+const markDeliverySkipped = `-- name: MarkDeliverySkipped :exec
+UPDATE notification_deliveries
+SET status = 'skipped', next_attempt_at = NULL, error = $1
+WHERE id = $2
+`
+
+type MarkDeliverySkippedParams struct {
+	Reason *string
+	ID     uuid.UUID
+}
+
+// A delivery that may no longer go out; reason says why, for operators.
+func (q *Queries) MarkDeliverySkipped(ctx context.Context, arg MarkDeliverySkippedParams) error {
+	_, err := q.db.Exec(ctx, markDeliverySkipped, arg.Reason, arg.ID)
 	return err
 }
