@@ -5,7 +5,6 @@ package httpapi
 // finding is fixed.
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"slices"
@@ -68,40 +67,6 @@ func TestReviewH3RestoredListBringsChecklistsToSync(t *testing.T) {
 	next := a.changes(t, alice, full.NextCursor, 500)
 	if !slices.Contains(itemIDs(next.ChecklistItems), item.Id) {
 		t.Errorf("after the restore, sync brings task(s) %d but not the checklist item", len(next.Tasks))
-	}
-}
-
-// M2 (D-20, /tasks/{id}/restore): a task restored while its list is being
-// deleted must not end up live inside the deleted list.
-func TestReviewM2RestoreRacingListDeleteLeavesNoLiveTaskInDeletedList(t *testing.T) {
-	a := newTestApp(t)
-	alice := a.signUp(t, "alice")
-	list := a.createList(t, alice, "Errands", "b0")
-	task := a.createTask(t, alice, list.Id, "Groceries")
-	if rec := a.call(t, alice, http.MethodDelete, "/tasks/"+task.Id.String(), ""); rec.Code != http.StatusNoContent {
-		t.Fatalf("delete task: %d %s", rec.Code, rec.Body)
-	}
-
-	ctx := context.Background()
-	// Either may lose (409); what matters is the state left.
-	_, _ = a.concurrently(t,
-		func() error {
-			_, err := a.tasks.RestoreTask(ctx, alice.id, task.Id)
-			return err
-		},
-		func() error {
-			return a.tasks.DeleteList(ctx, alice.id, list.Id)
-		})
-
-	var taskLive, listLive bool
-	err := a.pool.QueryRow(ctx,
-		"SELECT t.deleted_at IS NULL, l.deleted_at IS NULL FROM tasks t JOIN lists l ON l.id = t.list_id WHERE t.id = $1",
-		task.Id).Scan(&taskLive, &listLive)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if taskLive && !listLive {
-		t.Error("the task is live in a deleted list")
 	}
 }
 

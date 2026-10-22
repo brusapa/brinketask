@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/brusapa/brinketask/internal/storage/storagetest"
 	"github.com/brusapa/brinketask/internal/tasks"
 )
@@ -84,5 +86,41 @@ func TestCompleteWhileReminderIsPatched(t *testing.T) {
 	// not found is the right answer, a deadlock is not.
 	if completeErr != nil || (patchErr != nil && !errors.Is(patchErr, tasks.ErrNotFound)) {
 		t.Errorf("complete: %v; reminder patch: %v", completeErr, patchErr)
+	}
+}
+
+// D-20: a task restored while its list is being deleted is not left live
+// in the deleted list; it goes with the list.
+func TestRestoreTaskWhileListIsDeleted(t *testing.T) {
+	a := newTestApp(t)
+	alice := a.signUp(t, "alice")
+	list := a.createList(t, alice, "Errands", "b0")
+	task := a.createTask(t, alice, list.Id, "Groceries")
+	if rec := a.call(t, alice, http.MethodDelete, "/tasks/"+task.Id.String(), ""); rec.Code != http.StatusNoContent {
+		t.Fatalf("delete task: %d %s", rec.Code, rec.Body)
+	}
+	ctx := context.Background()
+
+	restoreErr, deleteErr := a.concurrently(t,
+		func() error {
+			_, err := a.tasks.RestoreTask(ctx, alice.id, task.Id)
+			return err
+		},
+		func() error {
+			return a.tasks.DeleteList(ctx, alice.id, list.Id)
+		})
+	if restoreErr != nil || deleteErr != nil {
+		t.Fatalf("restore: %v; delete list: %v", restoreErr, deleteErr)
+	}
+
+	var taskLive bool
+	var deletedWith *uuid.UUID
+	err := a.pool.QueryRow(ctx, "SELECT deleted_at IS NULL, deleted_with_list_id FROM tasks WHERE id = $1", task.Id).
+		Scan(&taskLive, &deletedWith)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if taskLive || deletedWith == nil || *deletedWith != list.Id {
+		t.Errorf("task live %v, deleted with %v; want deleted with the list", taskLive, deletedWith)
 	}
 }

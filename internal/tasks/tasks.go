@@ -350,6 +350,17 @@ func (s *Service) DeleteTask(ctx context.Context, userID, id uuid.UUID) error {
 func (s *Service) RestoreTask(ctx context.Context, userID, id uuid.UUID) (Task, error) {
 	var task Task
 	err := s.inTx(ctx, func(q *dbgen.Queries) error {
+		// The list before the task, as DeleteList locks them: otherwise the
+		// list could be deleted after this check, and its deletion would
+		// miss the task restored here (D-20). A deleted task cannot move to
+		// another list, so this is still its list once the task is locked.
+		listLive, err := q.LockListOfTaskForShare(ctx, dbgen.LockListOfTaskForShareParams{UserID: userID, ID: id})
+		if isNoRows(err) {
+			return ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
 		current, err := q.LockTaskForUser(ctx, dbgen.LockTaskForUserParams{UserID: userID, ID: id})
 		if isNoRows(err) {
 			return ErrNotFound
@@ -363,10 +374,6 @@ func (s *Service) RestoreTask(ctx context.Context, userID, id uuid.UUID) (Task, 
 		}
 		if current.DeletedWithListID != nil {
 			return conflict("the task was deleted with its list; restore the list")
-		}
-		listLive, err := q.ListIsLive(ctx, current.ListID)
-		if err != nil {
-			return err
 		}
 		if !listLive {
 			return conflict("the task's list is deleted")

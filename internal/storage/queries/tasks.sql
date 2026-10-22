@@ -15,8 +15,17 @@ FOR UPDATE OF t;
 -- name: TaskExists :one
 SELECT EXISTS (SELECT 1 FROM tasks WHERE id = @id);
 
--- name: ListIsLive :one
-SELECT (deleted_at IS NULL)::boolean FROM lists WHERE id = @id;
+-- name: LockListOfTaskForShare :one
+-- Whether the list of one of the user's tasks is live, share-locked until
+-- the transaction ends: restoring a task locks its list before the task,
+-- as deleting the list does (parent before child), so the list cannot be
+-- deleted between the check and the restore.
+SELECT (l.deleted_at IS NULL)::boolean AS live
+FROM lists l
+JOIN tasks t ON t.list_id = l.id
+JOIN list_members m ON m.list_id = l.id AND m.user_id = @user_id
+WHERE t.id = @id
+FOR SHARE OF l;
 
 -- name: InsertTask :exec
 INSERT INTO tasks (
