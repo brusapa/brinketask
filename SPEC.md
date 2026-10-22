@@ -213,7 +213,7 @@ At most 5 live reminders per task (`snooze` reminders do not count).
 
 ### notification_deliveries
 
-`id`, `reminder_id`, `fire_at`, `subscription_id`, `status` (`pending | sent | failed | skipped`), `attempts`, `next_attempt_at` (D-66), `sent_at`, `error`, and the occurrence it is about: `occurrence_due_date`, `occurrence_due_time`, `occurrence_due_tz` (the task's due fields when the reminder fired). Unique on (`reminder_id`, `fire_at`, `subscription_id`) so nothing is sent twice.
+`id`, `reminder_id`, `fire_at`, `subscription_id`, `status` (`pending | sent | failed | skipped`), `attempts`, `next_attempt_at` (D-66), `sent_at`, `error`, and the occurrence it is about: `occurrence_due_date`, `occurrence_due_time`, `occurrence_due_tz` (the task's due fields when the reminder fired). Unique on (`reminder_id`, `fire_at`, `subscription_id`): a firing creates at most one delivery per device. Sending is at least once: if the push service accepted a message but recording that fails (a crash, a lost answer), the delivery is tried again and the device may receive it twice. The service worker tags each notification with its task, so a repeat replaces the one shown instead of adding another.
 
 ### sessions
 
