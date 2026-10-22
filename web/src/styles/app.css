@@ -1245,6 +1245,17 @@ textarea.input {
   .calendar-cell {
     height: 44px;
   }
+
+  /* Seven 44 px days (DESIGN section 5) plus the popover's padding and
+     border (2 × 5 px) and the dialog's (2 × 8 px), within the screen. */
+  .due-popover {
+    width: calc(7 * 44px + 26px);
+    max-width: calc(100vw - 16px);
+  }
+
+  .due-popover .dialog {
+    padding: 8px;
+  }
 }
 
 /* Lists in the sidebar are grid rows (for drag and drop) that act as links. */
