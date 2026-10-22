@@ -58,3 +58,20 @@ JOIN list_members m ON m.list_id = t.list_id AND m.user_id = @user_id
 WHERE r.deleted_at IS NULL
 ORDER BY r.id
 FOR UPDATE OF r;
+
+-- name: LockTaskOfReminder :exec
+-- Share-locks the task of a reminder before the reminder is locked, in the
+-- lock order of LockTaskOfChecklistItem.
+SELECT t.id FROM tasks t
+JOIN reminders r ON r.task_id = t.id
+JOIN list_members m ON m.list_id = t.list_id AND m.user_id = @user_id
+WHERE r.id = @id
+FOR SHARE OF t;
+
+-- name: LockLiveRemindersOfTasks :exec
+-- The live reminders of several tasks, locked before a seq is taken:
+-- deleting or restoring a list recomputes them after writing its tasks.
+SELECT id FROM reminders
+WHERE task_id = ANY(@task_ids::uuid[]) AND deleted_at IS NULL
+ORDER BY id
+FOR UPDATE;

@@ -234,6 +234,9 @@ func (s *Service) PatchTask(ctx context.Context, userID, id uuid.UUID, patch Tas
 		if err != nil {
 			return err
 		}
+		if err := lockReminders(ctx, q, id); err != nil {
+			return err
+		}
 
 		updated := current
 		if patch.ListID != nil {
@@ -326,6 +329,9 @@ func (s *Service) DeleteTask(ctx context.Context, userID, id uuid.UUID) error {
 		if current.DeletedAt != nil {
 			return nil
 		}
+		if err := lockReminders(ctx, q, id); err != nil {
+			return err
+		}
 		now := s.now()
 		current.DeletedAt = &now
 		if err := s.writeTask(ctx, q, &current); err != nil {
@@ -367,6 +373,9 @@ func (s *Service) RestoreTask(ctx context.Context, userID, id uuid.UUID) (Task, 
 		}
 		if !restorable(*current.DeletedAt, s.now()) {
 			return conflict("the task was deleted more than 30 days ago")
+		}
+		if err := lockReminders(ctx, q, id); err != nil {
+			return err
 		}
 		current.DeletedAt = nil
 		if err := s.writeTask(ctx, q, &current); err != nil {
@@ -448,6 +457,17 @@ func checkChecklistIDs(items []NewChecklistItem) []FieldError {
 		seen[item.ID] = true
 	}
 	return nil
+}
+
+// lockReminders locks the live reminders of a task whose lock the caller
+// holds, before the write takes a seq. Every write locks in one order: a
+// list, a task, its children, and the seq last (D-07). The scheduler holds
+// a reminder when it asks for a seq; a task write that took the seq first
+// and then waited for that reminder would deadlock with it. Checklist
+// items need no such step: their writes lock the task before the item.
+func lockReminders(ctx context.Context, q *dbgen.Queries, taskID uuid.UUID) error {
+	_, err := q.LockLiveRemindersOfTask(ctx, taskID)
+	return err
 }
 
 // writeTask stores a changed task: one more version and a new seq (D-07).

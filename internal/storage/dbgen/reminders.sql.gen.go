@@ -177,6 +177,20 @@ func (q *Queries) LockLiveRemindersOfTask(ctx context.Context, taskID uuid.UUID)
 	return items, nil
 }
 
+const lockLiveRemindersOfTasks = `-- name: LockLiveRemindersOfTasks :exec
+SELECT id FROM reminders
+WHERE task_id = ANY($1::uuid[]) AND deleted_at IS NULL
+ORDER BY id
+FOR UPDATE
+`
+
+// The live reminders of several tasks, locked before a seq is taken:
+// deleting or restoring a list recomputes them after writing its tasks.
+func (q *Queries) LockLiveRemindersOfTasks(ctx context.Context, taskIds []uuid.UUID) error {
+	_, err := q.db.Exec(ctx, lockLiveRemindersOfTasks, taskIds)
+	return err
+}
+
 const lockLiveRemindersOfUser = `-- name: LockLiveRemindersOfUser :many
 SELECT r.id, r.task_id, r.kind, r.offset_minutes, r.at, r.next_fire_at, r.last_fired_at, r.version, r.seq, r.created_at, r.updated_at, r.deleted_at, t.id, t.list_id, t.title, t.description, t.status, t.priority, t.position, t.due_date, t.due_time, t.due_tz, t.rrule, t.repeat_from, t.recurrence_done_count, t.completed_at, t.tag_ids, t.deleted_with_list_id, t.version, t.seq, t.created_at, t.updated_at, t.deleted_at, t.recurrence_start
 FROM reminders r
@@ -287,6 +301,26 @@ func (q *Queries) LockReminderForUser(ctx context.Context, arg LockReminderForUs
 		&i.TaskDeleted,
 	)
 	return i, err
+}
+
+const lockTaskOfReminder = `-- name: LockTaskOfReminder :exec
+SELECT t.id FROM tasks t
+JOIN reminders r ON r.task_id = t.id
+JOIN list_members m ON m.list_id = t.list_id AND m.user_id = $1
+WHERE r.id = $2
+FOR SHARE OF t
+`
+
+type LockTaskOfReminderParams struct {
+	UserID uuid.UUID
+	ID     uuid.UUID
+}
+
+// Share-locks the task of a reminder before the reminder is locked, in the
+// lock order of LockTaskOfChecklistItem.
+func (q *Queries) LockTaskOfReminder(ctx context.Context, arg LockTaskOfReminderParams) error {
+	_, err := q.db.Exec(ctx, lockTaskOfReminder, arg.UserID, arg.ID)
+	return err
 }
 
 const reminderExists = `-- name: ReminderExists :one

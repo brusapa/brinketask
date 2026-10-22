@@ -44,3 +44,13 @@ SET is_done = false, version = c.version + 1, seq = v.seq, updated_at = @now
 -- with seqs[i].
 FROM (SELECT unnest(@ids::uuid[]) AS id, unnest(@seqs::bigint[]) AS seq) AS v
 WHERE c.id = v.id;
+
+-- name: LockTaskOfChecklistItem :exec
+-- Share-locks the task of an item before the item is locked: every write
+-- takes the task first, its children second and a seq last (D-07), so a
+-- write of the task and a write of one of its items cannot deadlock.
+SELECT t.id FROM tasks t
+JOIN checklist_items c ON c.task_id = t.id
+JOIN list_members m ON m.list_id = t.list_id AND m.user_id = @user_id
+WHERE c.id = @id
+FOR SHARE OF t;

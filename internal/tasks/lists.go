@@ -180,6 +180,10 @@ func (s *Service) DeleteList(ctx context.Context, userID, id uuid.UUID) error {
 		if err != nil {
 			return err
 		}
+		// Their reminders before any seq, as lockReminders explains.
+		if err := q.LockLiveRemindersOfTasks(ctx, taskIDs); err != nil {
+			return err
+		}
 		now := s.now()
 		updated := row.List
 		updated.DeletedAt = &now
@@ -229,6 +233,9 @@ func (s *Service) RestoreList(ctx context.Context, userID, id uuid.UUID) (List, 
 
 		taskIDs, err := q.LockTaskIDsDeletedWithList(ctx, &id)
 		if err != nil {
+			return err
+		}
+		if err := q.LockLiveRemindersOfTasks(ctx, taskIDs); err != nil {
 			return err
 		}
 		updated := row.List

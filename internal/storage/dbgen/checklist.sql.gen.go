@@ -157,6 +157,27 @@ func (q *Queries) LockDoneItemIDsOfTask(ctx context.Context, taskID uuid.UUID) (
 	return items, nil
 }
 
+const lockTaskOfChecklistItem = `-- name: LockTaskOfChecklistItem :exec
+SELECT t.id FROM tasks t
+JOIN checklist_items c ON c.task_id = t.id
+JOIN list_members m ON m.list_id = t.list_id AND m.user_id = $1
+WHERE c.id = $2
+FOR SHARE OF t
+`
+
+type LockTaskOfChecklistItemParams struct {
+	UserID uuid.UUID
+	ID     uuid.UUID
+}
+
+// Share-locks the task of an item before the item is locked: every write
+// takes the task first, its children second and a seq last (D-07), so a
+// write of the task and a write of one of its items cannot deadlock.
+func (q *Queries) LockTaskOfChecklistItem(ctx context.Context, arg LockTaskOfChecklistItemParams) error {
+	_, err := q.db.Exec(ctx, lockTaskOfChecklistItem, arg.UserID, arg.ID)
+	return err
+}
+
 const uncheckItems = `-- name: UncheckItems :exec
 UPDATE checklist_items c
 SET is_done = false, version = c.version + 1, seq = v.seq, updated_at = $1

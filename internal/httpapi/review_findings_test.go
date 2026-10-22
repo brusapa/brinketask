@@ -10,62 +10,9 @@ import (
 	"net/http"
 	"slices"
 	"testing"
-	"time"
 
 	"github.com/google/uuid"
-
-	"github.com/brusapa/brinketask/internal/tasks"
 )
-
-// holdSeqLock takes the lock of the sync_state row (D-07) in a transaction
-// of its own, so every writer that asks for a seq waits. Calling the
-// returned function commits and lets them go. Tests use it to stop
-// concurrent operations at a known point.
-func (a *testApp) holdSeqLock(t *testing.T) func() {
-	t.Helper()
-	ctx := context.Background()
-	tx, err := a.pool.Begin(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := tx.Exec(ctx, "UPDATE sync_state SET seq = seq"); err != nil {
-		t.Fatal(err)
-	}
-	released := false
-	release := func() {
-		if !released {
-			released = true
-			if err := tx.Commit(ctx); err != nil {
-				t.Error(err)
-			}
-		}
-	}
-	t.Cleanup(release)
-	return release
-}
-
-// waitForLockWaiters blocks until n sessions of the test database wait
-// for a lock.
-func (a *testApp) waitForLockWaiters(t *testing.T, n int) {
-	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
-	for {
-		var waiting int
-		err := a.pool.QueryRow(context.Background(),
-			"SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'").
-			Scan(&waiting)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if waiting >= n {
-			return
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("%d sessions wait for a lock, want %d", waiting, n)
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-}
 
 func itemIDs(items []ChecklistItem) []uuid.UUID {
 	ids := make([]uuid.UUID, len(items))
@@ -124,47 +71,6 @@ func TestReviewH3RestoredListBringsChecklistsToSync(t *testing.T) {
 	}
 }
 
-// M1 (D-07, R-7): completing a recurring task while one of its checklist
-// items is being edited must not deadlock. Complete locks the task, then
-// the seq, then the items (R-7); the item patch locks the item, then the
-// seq. PostgreSQL aborts one of them (40P01), which becomes a 500.
-func TestReviewM1CompleteAndItemPatchDoNotDeadlock(t *testing.T) {
-	a := newTestApp(t)
-	alice := a.signUp(t, "alice")
-	task := a.newRecurring(t, alice, "2026-10-08", "FREQ=DAILY", "")
-	item := a.createItem(t, alice, task.Id, "Water the plants", "a0")
-	if rec := a.call(t, alice, http.MethodPatch, "/checklist-items/"+item.Id.String(), `{"is_done":true}`); rec.Code != http.StatusOK {
-		t.Fatalf("tick: %d %s", rec.Code, rec.Body)
-	}
-
-	ctx := context.Background()
-	occurrence := time.Date(2026, 10, 8, 0, 0, 0, 0, time.UTC)
-	completionID := newID(t)
-	title := "Water all the plants"
-	release := a.holdSeqLock(t)
-
-	errs := make(chan error, 2)
-	go func() {
-		_, err := a.tasks.Complete(ctx, alice.id, task.Id, tasks.CompleteInput{
-			CompletionID: completionID, OccurrenceDueDate: &occurrence,
-		})
-		errs <- err
-	}()
-	a.waitForLockWaiters(t, 1) // complete holds the task and waits for a seq
-	go func() {
-		_, err := a.tasks.PatchChecklistItem(ctx, alice.id, item.Id, tasks.ChecklistItemPatch{Title: &title})
-		errs <- err
-	}()
-	a.waitForLockWaiters(t, 2) // the patch holds the item and waits for a seq
-	release()
-
-	for range 2 {
-		if err := <-errs; err != nil {
-			t.Errorf("concurrent complete and item patch: %v", err)
-		}
-	}
-}
-
 // M2 (D-20, /tasks/{id}/restore): a task restored while its list is being
 // deleted must not end up live inside the deleted list.
 func TestReviewM2RestoreRacingListDeleteLeavesNoLiveTaskInDeletedList(t *testing.T) {
@@ -177,21 +83,15 @@ func TestReviewM2RestoreRacingListDeleteLeavesNoLiveTaskInDeletedList(t *testing
 	}
 
 	ctx := context.Background()
-	release := a.holdSeqLock(t)
-	errs := make(chan error, 2)
-	go func() {
-		_, err := a.tasks.RestoreTask(ctx, alice.id, task.Id)
-		errs <- err
-	}()
-	a.waitForLockWaiters(t, 1) // the restore has seen a live list
-	go func() {
-		errs <- a.tasks.DeleteList(ctx, alice.id, list.Id)
-	}()
-	a.waitForLockWaiters(t, 2) // the delete has picked the list's live tasks
-	release()
-	for range 2 {
-		<-errs // either may lose (409); what matters is the state left
-	}
+	// Either may lose (409); what matters is the state left.
+	_, _ = a.concurrently(t,
+		func() error {
+			_, err := a.tasks.RestoreTask(ctx, alice.id, task.Id)
+			return err
+		},
+		func() error {
+			return a.tasks.DeleteList(ctx, alice.id, list.Id)
+		})
 
 	var taskLive, listLive bool
 	err := a.pool.QueryRow(ctx,

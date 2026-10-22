@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/oapi-codegen/nullable"
 
 	"github.com/brusapa/brinketask/internal/account"
 	"github.com/brusapa/brinketask/internal/clock"
@@ -386,4 +387,67 @@ func TestSchedulerReportsToObserver(t *testing.T) {
 	if !slices.Equal(rec.outcomes, []string{"retry", "sent"}) {
 		t.Errorf("outcomes = %v", rec.outcomes)
 	}
+}
+
+// D-07: the scheduler holds a reminder when it asks for a seq, and a task
+// write locks its reminders before taking one, so firing a reminder while
+// its task changes deadlocks neither.
+func TestFiringWhileTaskIsPatched(t *testing.T) {
+	e := setup(t)
+	e.device(t, "phone")
+	taskID, _ := e.task(t, "Due now", start)
+	ctx := context.Background()
+	newDue := time.Date(2026, 10, 11, 0, 0, 0, 0, time.UTC)
+
+	release := storagetest.HoldSeqLock(t, e.pool)
+	patchErr := make(chan error, 1)
+	go func() {
+		_, err := e.tasks.PatchTask(ctx, e.user, taskID, tasks.TaskPatch{DueDate: nullable.NewNullableWithValue(newDue)})
+		patchErr <- err
+	}()
+	storagetest.WaitForLockWaiters(t, e.pool, 1)
+	tickErr := make(chan error, 1)
+	go func() { tickErr <- e.scheduler.Tick(ctx) }()
+	// The tick either waits for a seq too, or skips the reminder the patch
+	// holds and ends.
+	waitForTickOrWaiters(t, e, tickErr, 2)
+	release()
+
+	if err := <-patchErr; err != nil {
+		t.Errorf("patch: %v", err)
+	}
+	if err := <-tickErr; err != nil {
+		t.Errorf("tick: %v", err)
+	}
+	e.tick(t)
+	if got := len(e.push.Messages()); got != 1 {
+		t.Errorf("messages = %d, want the reminder once", got)
+	}
+}
+
+// waitForTickOrWaiters returns once n sessions wait for a lock, or once
+// the tick has ended (its error is put back for the caller).
+func waitForTickOrWaiters(t *testing.T, e *env, tickErr chan error, n int) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		select {
+		case err := <-tickErr:
+			tickErr <- err
+			return
+		default:
+		}
+		var waiting int
+		err := e.pool.QueryRow(context.Background(),
+			"SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'").
+			Scan(&waiting)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if waiting >= n {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("the tick neither ended nor waited")
 }

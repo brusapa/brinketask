@@ -78,6 +78,10 @@ func (s *Service) CreateChecklistItem(ctx context.Context, userID, taskID uuid.U
 func (s *Service) PatchChecklistItem(ctx context.Context, userID, id uuid.UUID, patch ChecklistItemPatch) (ChecklistItem, error) {
 	var item ChecklistItem
 	err := s.inTx(ctx, func(q *dbgen.Queries) error {
+		// Lock order: the task, then the item, then a seq (D-07).
+		if err := q.LockTaskOfChecklistItem(ctx, dbgen.LockTaskOfChecklistItemParams{UserID: userID, ID: id}); err != nil {
+			return err
+		}
 		row, err := q.LockChecklistItemForUser(ctx, dbgen.LockChecklistItemForUserParams{UserID: userID, ID: id})
 		if isNoRows(err) || (err == nil && (row.ChecklistItem.DeletedAt != nil || row.TaskDeleted)) {
 			return ErrNotFound
@@ -116,6 +120,9 @@ func (s *Service) PatchChecklistItem(ctx context.Context, userID, id uuid.UUID, 
 // (D-19) but leaves a tombstone for sync. Repeating it does nothing (D-22).
 func (s *Service) DeleteChecklistItem(ctx context.Context, userID, id uuid.UUID) error {
 	err := s.inTx(ctx, func(q *dbgen.Queries) error {
+		if err := q.LockTaskOfChecklistItem(ctx, dbgen.LockTaskOfChecklistItemParams{UserID: userID, ID: id}); err != nil {
+			return err
+		}
 		row, err := q.LockChecklistItemForUser(ctx, dbgen.LockChecklistItemForUserParams{UserID: userID, ID: id})
 		if isNoRows(err) || (err == nil && row.TaskDeleted) {
 			return ErrNotFound
