@@ -244,3 +244,26 @@ test("the inbox under its list id redirects to its own screen", async () => {
   await renderApp({ path: `/lists/${inboxId}` });
   expect(await screen.findByRole("heading", { level: 1, name: "Inbox" })).toBeDefined();
 });
+
+// SPEC sections 8 and 9: the Completed section shows every entry of the
+// day, following next_cursor past the first page.
+test("the Completed section reads every page", async () => {
+  const entry = (n: number) => completion(`c${n}`, `Done ${n}`, "2026-10-09T08:00:00Z", true);
+  const server = new FakeServer()
+    .on("GET", "/me", json(testUser))
+    .on("GET", "/sync/changes", json(page({ lists: [inbox] })))
+    .on("GET", "/completions", (r) =>
+      r.query.get("cursor") === null
+        ? json({ items: Array.from({ length: 500 }, (_, i) => entry(i)), next_cursor: "p2" })
+        : json({ items: [entry(500)], next_cursor: null }),
+    );
+  await renderApp({ server });
+  const toggle = await screen.findByRole("button", { name: /Completed/ });
+  await waitFor(() => {
+    expect(toggle.textContent).toContain("501");
+  });
+  expect(server.calls("GET", "/completions").map((c) => c.query.get("cursor"))).toEqual([
+    null,
+    "p2",
+  ]);
+});
