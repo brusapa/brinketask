@@ -1788,7 +1788,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Already existed; keys refreshed */
+            /** @description Already existed; keys, and for a known id a renewed endpoint, refreshed (SPEC D-32) */
             200: {
                 headers: {
                     [name: string]: unknown;

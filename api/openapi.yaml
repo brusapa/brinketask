@@ -712,7 +712,7 @@ paths:
             schema: { $ref: '#/components/schemas/PushSubscriptionCreate' }
       responses:
         '200':
-          description: Already existed; keys refreshed
+          description: Already existed; keys, and for a known id a renewed endpoint, refreshed (SPEC D-32)
           content:
             application/json:
               schema: { $ref: '#/components/schemas/PushSubscription' }

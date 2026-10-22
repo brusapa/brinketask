@@ -17,10 +17,11 @@ INSERT INTO push_subscriptions (id, user_id, channel, endpoint, p256dh, auth, la
 VALUES (@id, @user_id, @channel, @endpoint, @p256dh, @auth, @label, @now);
 
 -- name: RefreshSubscription :exec
--- A device registering again: its keys may have changed, it may now belong
--- to another user (D-32), and it works again if it had been disabled.
+-- A device registering again: its keys, and after the browser renewed its
+-- subscription its endpoint, may have changed; it may now belong to another
+-- user (D-32), and it works again if it had been disabled.
 UPDATE push_subscriptions
-SET user_id = @user_id, p256dh = @p256dh, auth = @auth, label = @label, disabled_at = NULL
+SET user_id = @user_id, endpoint = @endpoint, p256dh = @p256dh, auth = @auth, label = @label, disabled_at = NULL
 WHERE id = @id;
 
 -- name: DeleteSubscriptionForUser :execrows
