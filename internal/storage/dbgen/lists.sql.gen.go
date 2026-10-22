@@ -27,6 +27,8 @@ type DeleteTasksWithListParams struct {
 	Seqs   []int64
 }
 
+// Not filtered by user: the caller first locks the row this one belongs
+// to through a *ForUser query (list_members) in the same transaction.
 // Soft-deletes the given tasks as part of deleting their list (D-20). ids
 // and seqs are parallel arrays: each task gets its own seq.
 // Two unnest calls in one SELECT list advance together, pairing ids[i]
@@ -122,6 +124,7 @@ type InsertListMemberParams struct {
 	Role   string
 }
 
+// A new list's first member, its owner, written with the list.
 func (q *Queries) InsertListMember(ctx context.Context, arg InsertListMemberParams) error {
 	_, err := q.db.Exec(ctx, insertListMember, arg.ListID, arg.UserID, arg.Role)
 	return err
@@ -131,6 +134,8 @@ const listExists = `-- name: ListExists :one
 SELECT EXISTS (SELECT 1 FROM lists WHERE id = $1)
 `
 
+// Not filtered by user on purpose: an id taken by another user is a
+// conflict (D-23), so creation must see every row.
 func (q *Queries) ListExists(ctx context.Context, id uuid.UUID) (bool, error) {
 	row := q.db.QueryRow(ctx, listExists, id)
 	var exists bool
@@ -259,6 +264,8 @@ const lockLiveTaskIDsInList = `-- name: LockLiveTaskIDsInList :many
 SELECT id FROM tasks WHERE list_id = $1 AND deleted_at IS NULL ORDER BY id FOR UPDATE
 `
 
+// Not filtered by user: the caller first locks the row this one belongs
+// to through a *ForUser query (list_members) in the same transaction.
 func (q *Queries) LockLiveTaskIDsInList(ctx context.Context, listID uuid.UUID) ([]uuid.UUID, error) {
 	rows, err := q.db.Query(ctx, lockLiveTaskIDsInList, listID)
 	if err != nil {
@@ -283,6 +290,8 @@ const lockTaskIDsDeletedWithList = `-- name: LockTaskIDsDeletedWithList :many
 SELECT id FROM tasks WHERE deleted_with_list_id = $1 ORDER BY id FOR UPDATE
 `
 
+// Not filtered by user: the caller first locks the row this one belongs
+// to through a *ForUser query (list_members) in the same transaction.
 func (q *Queries) LockTaskIDsDeletedWithList(ctx context.Context, listID *uuid.UUID) ([]uuid.UUID, error) {
 	rows, err := q.db.Query(ctx, lockTaskIDsDeletedWithList, listID)
 	if err != nil {
@@ -317,6 +326,8 @@ type RestoreTasksWithListParams struct {
 	Seqs []int64
 }
 
+// Not filtered by user: the caller first locks the row this one belongs
+// to through a *ForUser query (list_members) in the same transaction.
 // Two unnest calls in one SELECT list advance together, pairing ids[i]
 // with seqs[i].
 func (q *Queries) RestoreTasksWithList(ctx context.Context, arg RestoreTasksWithListParams) error {
@@ -342,6 +353,8 @@ type UpdateListParams struct {
 	ID        uuid.UUID
 }
 
+// Not filtered by user: the caller first locks the row this one belongs
+// to through a *ForUser query (list_members) in the same transaction.
 func (q *Queries) UpdateList(ctx context.Context, arg UpdateListParams) error {
 	_, err := q.db.Exec(ctx, updateList,
 		arg.Name,

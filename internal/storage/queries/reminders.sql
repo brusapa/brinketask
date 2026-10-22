@@ -16,13 +16,19 @@ WHERE r.id = @id
 FOR UPDATE OF r;
 
 -- name: ReminderExists :one
+-- Not filtered by user on purpose: an id taken by another user is a
+-- conflict (D-23), so creation must see every row.
 SELECT EXISTS (SELECT 1 FROM reminders WHERE id = @id);
 
 -- name: InsertReminder :exec
+-- Not filtered by user: the caller first locks the row this one belongs
+-- to through a *ForUser query (list_members) in the same transaction.
 INSERT INTO reminders (id, task_id, kind, offset_minutes, at, next_fire_at, version, seq, created_at, updated_at)
 VALUES (@id, @task_id, @kind, @offset_minutes, @at, @next_fire_at, 1, @seq, @now, @now);
 
 -- name: UpdateReminder :exec
+-- Not filtered by user: the caller first locks the row this one belongs
+-- to through a *ForUser query (list_members) in the same transaction.
 -- Writes every mutable column; the caller read the row under lock.
 UPDATE reminders
 SET offset_minutes = @offset_minutes, at = @at, next_fire_at = @next_fire_at,
@@ -31,16 +37,22 @@ SET offset_minutes = @offset_minutes, at = @at, next_fire_at = @next_fire_at,
 WHERE id = @id;
 
 -- name: LiveRemindersForTasks :many
+-- Not filtered by user: the caller first locks the row this one belongs
+-- to through a *ForUser query (list_members) in the same transaction.
 SELECT * FROM reminders
 WHERE task_id = ANY(@task_ids::uuid[]) AND deleted_at IS NULL
 ORDER BY task_id, created_at, id;
 
 -- name: CountLiveRemindersOfTask :one
+-- Not filtered by user: the caller first locks the row this one belongs
+-- to through a *ForUser query (list_members) in the same transaction.
 -- The reminders that count towards the limit of 5 (snooze ones do not).
 SELECT count(*)::integer FROM reminders
 WHERE task_id = @task_id AND deleted_at IS NULL AND kind <> 'snooze';
 
 -- name: LockLiveRemindersOfTask :many
+-- Not filtered by user: the caller first locks the row this one belongs
+-- to through a *ForUser query (list_members) in the same transaction.
 -- A task's live reminders, locked, to recompute them after the task
 -- changed. The caller holds the task's lock already.
 SELECT * FROM reminders
@@ -69,6 +81,8 @@ WHERE r.id = @id
 FOR SHARE OF t;
 
 -- name: LockLiveRemindersOfTasks :many
+-- Not filtered by user: the caller first locks the row this one belongs
+-- to through a *ForUser query (list_members) in the same transaction.
 -- The live reminders of several tasks, locked before a seq is taken:
 -- deleting or restoring a list recomputes them after writing its tasks,
 -- and a restore writes them again (D-67).
@@ -78,6 +92,8 @@ ORDER BY id
 FOR UPDATE;
 
 -- name: RewriteReminders :exec
+-- Not filtered by user: the caller first locks the row this one belongs
+-- to through a *ForUser query (list_members) in the same transaction.
 -- Writes reminders again, content unchanged, each with a new version and
 -- its own seq: a restored task's reminders reach the devices that synced
 -- while it was deleted (D-67). ids and seqs are parallel arrays.

@@ -13,6 +13,8 @@ WHERE t.id = @id
 FOR UPDATE OF t;
 
 -- name: TaskExists :one
+-- Not filtered by user on purpose: an id taken by another user is a
+-- conflict (D-23), so creation must see every row.
 SELECT EXISTS (SELECT 1 FROM tasks WHERE id = @id);
 
 -- name: LockListOfTaskForShare :one
@@ -28,6 +30,8 @@ WHERE t.id = @id
 FOR SHARE OF l;
 
 -- name: InsertTask :exec
+-- Not filtered by user: the caller first locks the row this one belongs
+-- to through a *ForUser query (list_members) in the same transaction.
 INSERT INTO tasks (
     id, list_id, title, description, status, priority, position, due_date, due_time, due_tz,
     rrule, recurrence_start, repeat_from, tag_ids, version, seq, created_at, updated_at
@@ -37,6 +41,8 @@ INSERT INTO tasks (
 );
 
 -- name: UpdateTask :exec
+-- Not filtered by user: the caller first locks the row this one belongs
+-- to through a *ForUser query (list_members) in the same transaction.
 -- Writes every mutable column; the caller read the row under lock and
 -- changed what the request asked for.
 UPDATE tasks
@@ -49,6 +55,8 @@ SET list_id = @list_id, title = @title, description = @description, status = @st
 WHERE id = @id;
 
 -- name: LiveChecklistItemsForTasks :many
+-- Not filtered by user: the caller first locks the row this one belongs
+-- to through a *ForUser query (list_members) in the same transaction.
 SELECT * FROM checklist_items
 WHERE task_id = ANY(@task_ids::uuid[]) AND deleted_at IS NULL
 ORDER BY task_id, position, id;

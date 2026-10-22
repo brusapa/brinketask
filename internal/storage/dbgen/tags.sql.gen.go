@@ -230,6 +230,8 @@ type RemoveTagFromTasksParams struct {
 	Seqs  []int64
 }
 
+// Not filtered by user: the caller first locks the row this one belongs
+// to through a *ForUser query (list_members) in the same transaction.
 // Two unnest calls in one SELECT list advance together, pairing ids[i]
 // with seqs[i].
 func (q *Queries) RemoveTagFromTasks(ctx context.Context, arg RemoveTagFromTasksParams) error {
@@ -246,6 +248,8 @@ const tagExists = `-- name: TagExists :one
 SELECT EXISTS (SELECT 1 FROM tags WHERE id = $1)
 `
 
+// Not filtered by user on purpose: an id taken by another user is a
+// conflict (D-23), so creation must see every row.
 func (q *Queries) TagExists(ctx context.Context, id uuid.UUID) (bool, error) {
 	row := q.db.QueryRow(ctx, tagExists, id)
 	var exists bool
@@ -270,6 +274,8 @@ type UpdateTagParams struct {
 	ID        uuid.UUID
 }
 
+// Not filtered by user: the caller first locks the row this one belongs
+// to through a *ForUser query (list_members) in the same transaction.
 func (q *Queries) UpdateTag(ctx context.Context, arg UpdateTagParams) error {
 	_, err := q.db.Exec(ctx, updateTag,
 		arg.Name,

@@ -16,19 +16,27 @@ WHERE c.id = @id
 FOR UPDATE OF c;
 
 -- name: ChecklistItemExists :one
+-- Not filtered by user on purpose: an id taken by another user is a
+-- conflict (D-23), so creation must see every row.
 SELECT EXISTS (SELECT 1 FROM checklist_items WHERE id = @id);
 
 -- name: InsertChecklistItem :exec
+-- Not filtered by user: the caller first locks the row this one belongs
+-- to through a *ForUser query (list_members) in the same transaction.
 INSERT INTO checklist_items (id, task_id, title, is_done, position, version, seq, created_at, updated_at)
 VALUES (@id, @task_id, @title, @is_done, @position, 1, @seq, @now, @now);
 
 -- name: UpdateChecklistItem :exec
+-- Not filtered by user: the caller first locks the row this one belongs
+-- to through a *ForUser query (list_members) in the same transaction.
 UPDATE checklist_items
 SET title = @title, is_done = @is_done, position = @position, version = @version, seq = @seq,
     updated_at = @updated_at, deleted_at = @deleted_at
 WHERE id = @id;
 
 -- name: LockDoneItemIDsOfTask :many
+-- Not filtered by user: the caller first locks the row this one belongs
+-- to through a *ForUser query (list_members) in the same transaction.
 -- The live, ticked items of a task, locked: R-7 unticks them when a
 -- recurring task advances. The caller holds the task's lock already.
 SELECT id FROM checklist_items
@@ -37,6 +45,8 @@ ORDER BY id
 FOR UPDATE;
 
 -- name: UncheckItems :exec
+-- Not filtered by user: the caller first locks the row this one belongs
+-- to through a *ForUser query (list_members) in the same transaction.
 -- Unticks items, each with its own new seq (D-07).
 UPDATE checklist_items c
 SET is_done = false, version = c.version + 1, seq = v.seq, updated_at = @now
@@ -56,6 +66,8 @@ WHERE c.id = @id
 FOR SHARE OF t;
 
 -- name: LockLiveItemIDsOfTasks :many
+-- Not filtered by user: the caller first locks the row this one belongs
+-- to through a *ForUser query (list_members) in the same transaction.
 -- The live items of several tasks, locked before a seq is taken: a
 -- restore writes them again (D-45).
 SELECT id FROM checklist_items
@@ -64,6 +76,8 @@ ORDER BY id
 FOR UPDATE;
 
 -- name: RewriteChecklistItems :exec
+-- Not filtered by user: the caller first locks the row this one belongs
+-- to through a *ForUser query (list_members) in the same transaction.
 -- Writes items again, content unchanged, each with a new version and its
 -- own seq: a restored task's items reach the devices that synced while it
 -- was deleted (D-45). ids and seqs are parallel arrays.

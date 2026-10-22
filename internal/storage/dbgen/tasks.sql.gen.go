@@ -84,6 +84,8 @@ type InsertTaskParams struct {
 	Now             time.Time
 }
 
+// Not filtered by user: the caller first locks the row this one belongs
+// to through a *ForUser query (list_members) in the same transaction.
 func (q *Queries) InsertTask(ctx context.Context, arg InsertTaskParams) error {
 	_, err := q.db.Exec(ctx, insertTask,
 		arg.ID,
@@ -111,6 +113,8 @@ WHERE task_id = ANY($1::uuid[]) AND deleted_at IS NULL
 ORDER BY task_id, position, id
 `
 
+// Not filtered by user: the caller first locks the row this one belongs
+// to through a *ForUser query (list_members) in the same transaction.
 func (q *Queries) LiveChecklistItemsForTasks(ctx context.Context, taskIds []uuid.UUID) ([]ChecklistItem, error) {
 	rows, err := q.db.Query(ctx, liveChecklistItemsForTasks, taskIds)
 	if err != nil {
@@ -440,6 +444,8 @@ const taskExists = `-- name: TaskExists :one
 SELECT EXISTS (SELECT 1 FROM tasks WHERE id = $1)
 `
 
+// Not filtered by user on purpose: an id taken by another user is a
+// conflict (D-23), so creation must see every row.
 func (q *Queries) TaskExists(ctx context.Context, id uuid.UUID) (bool, error) {
 	row := q.db.QueryRow(ctx, taskExists, id)
 	var exists bool
@@ -481,6 +487,8 @@ type UpdateTaskParams struct {
 	ID                  uuid.UUID
 }
 
+// Not filtered by user: the caller first locks the row this one belongs
+// to through a *ForUser query (list_members) in the same transaction.
 // Writes every mutable column; the caller read the row under lock and
 // changed what the request asked for.
 func (q *Queries) UpdateTask(ctx context.Context, arg UpdateTaskParams) error {

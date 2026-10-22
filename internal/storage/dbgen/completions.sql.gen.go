@@ -17,6 +17,8 @@ const getCompletion = `-- name: GetCompletion :one
 SELECT id, task_id, kind, occurrence_due_date, completed_at, prev_due_date, prev_due_time, prev_recurrence_done_count, prev_status, task_seq, undone_at FROM task_completions WHERE id = $1
 `
 
+// Not filtered by user: the caller first locks the row this one belongs
+// to through a *ForUser query (list_members) in the same transaction.
 func (q *Queries) GetCompletion(ctx context.Context, id uuid.UUID) (TaskCompletion, error) {
 	row := q.db.QueryRow(ctx, getCompletion, id)
 	var i TaskCompletion
@@ -59,6 +61,8 @@ type InsertCompletionParams struct {
 	TaskSeq                 int64
 }
 
+// Not filtered by user: the caller first locks the row this one belongs
+// to through a *ForUser query (list_members) in the same transaction.
 func (q *Queries) InsertCompletion(ctx context.Context, arg InsertCompletionParams) error {
 	_, err := q.db.Exec(ctx, insertCompletion,
 		arg.ID,
@@ -82,6 +86,8 @@ ORDER BY task_seq DESC
 LIMIT 1
 `
 
+// Not filtered by user: the caller first locks the row this one belongs
+// to through a *ForUser query (list_members) in the same transaction.
 // The record uncomplete may undo: the newest one not undone (D-39).
 func (q *Queries) LatestCompletionID(ctx context.Context, taskID uuid.UUID) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, latestCompletionID, taskID)
@@ -198,6 +204,8 @@ type ListTaskCompletionsParams struct {
 	Lim       int32
 }
 
+// Not filtered by user: the caller first locks the row this one belongs
+// to through a *ForUser query (list_members) in the same transaction.
 // A task's history, newest first, without undone records.
 func (q *Queries) ListTaskCompletions(ctx context.Context, arg ListTaskCompletionsParams) ([]TaskCompletion, error) {
 	rows, err := q.db.Query(ctx, listTaskCompletions, arg.TaskID, arg.BeforeSeq, arg.Lim)
@@ -240,6 +248,8 @@ type MarkCompletionUndoneParams struct {
 	ID  uuid.UUID
 }
 
+// Not filtered by user: the caller first locks the row this one belongs
+// to through a *ForUser query (list_members) in the same transaction.
 func (q *Queries) MarkCompletionUndone(ctx context.Context, arg MarkCompletionUndoneParams) error {
 	_, err := q.db.Exec(ctx, markCompletionUndone, arg.Now, arg.ID)
 	return err

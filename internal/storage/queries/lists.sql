@@ -5,6 +5,7 @@ INSERT INTO lists (id, owner_id, name, color, position, is_inbox, version, seq, 
 VALUES (@id, @owner_id, @name, @color, @position, @is_inbox, 1, @seq, @now, @now);
 
 -- name: InsertListMember :exec
+-- A new list's first member, its owner, written with the list.
 INSERT INTO list_members (list_id, user_id, role) VALUES (@list_id, @user_id, @role);
 
 -- name: GetListForUser :one
@@ -34,6 +35,8 @@ WHERE l.id = @id AND l.deleted_at IS NULL
 FOR SHARE OF l;
 
 -- name: ListExists :one
+-- Not filtered by user on purpose: an id taken by another user is a
+-- conflict (D-23), so creation must see every row.
 SELECT EXISTS (SELECT 1 FROM lists WHERE id = @id);
 
 -- name: ListListsForUser :many
@@ -47,15 +50,21 @@ WHERE CASE WHEN @trash::boolean
 ORDER BY l.position, l.id;
 
 -- name: UpdateList :exec
+-- Not filtered by user: the caller first locks the row this one belongs
+-- to through a *ForUser query (list_members) in the same transaction.
 UPDATE lists
 SET name = @name, color = @color, position = @position, version = @version, seq = @seq,
     updated_at = @updated_at, deleted_at = @deleted_at
 WHERE id = @id;
 
 -- name: LockLiveTaskIDsInList :many
+-- Not filtered by user: the caller first locks the row this one belongs
+-- to through a *ForUser query (list_members) in the same transaction.
 SELECT id FROM tasks WHERE list_id = @list_id AND deleted_at IS NULL ORDER BY id FOR UPDATE;
 
 -- name: DeleteTasksWithList :exec
+-- Not filtered by user: the caller first locks the row this one belongs
+-- to through a *ForUser query (list_members) in the same transaction.
 -- Soft-deletes the given tasks as part of deleting their list (D-20). ids
 -- and seqs are parallel arrays: each task gets its own seq.
 UPDATE tasks t
@@ -67,9 +76,13 @@ FROM (SELECT unnest(@ids::uuid[]) AS id, unnest(@seqs::bigint[]) AS seq) AS v
 WHERE t.id = v.id;
 
 -- name: LockTaskIDsDeletedWithList :many
+-- Not filtered by user: the caller first locks the row this one belongs
+-- to through a *ForUser query (list_members) in the same transaction.
 SELECT id FROM tasks WHERE deleted_with_list_id = @list_id ORDER BY id FOR UPDATE;
 
 -- name: RestoreTasksWithList :exec
+-- Not filtered by user: the caller first locks the row this one belongs
+-- to through a *ForUser query (list_members) in the same transaction.
 UPDATE tasks t
 SET deleted_at = NULL, deleted_with_list_id = NULL, version = t.version + 1,
     seq = v.seq, updated_at = @now

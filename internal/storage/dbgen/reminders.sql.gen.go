@@ -17,6 +17,8 @@ SELECT count(*)::integer FROM reminders
 WHERE task_id = $1 AND deleted_at IS NULL AND kind <> 'snooze'
 `
 
+// Not filtered by user: the caller first locks the row this one belongs
+// to through a *ForUser query (list_members) in the same transaction.
 // The reminders that count towards the limit of 5 (snooze ones do not).
 func (q *Queries) CountLiveRemindersOfTask(ctx context.Context, taskID uuid.UUID) (int32, error) {
 	row := q.db.QueryRow(ctx, countLiveRemindersOfTask, taskID)
@@ -82,6 +84,8 @@ type InsertReminderParams struct {
 	Now           time.Time
 }
 
+// Not filtered by user: the caller first locks the row this one belongs
+// to through a *ForUser query (list_members) in the same transaction.
 func (q *Queries) InsertReminder(ctx context.Context, arg InsertReminderParams) error {
 	_, err := q.db.Exec(ctx, insertReminder,
 		arg.ID,
@@ -102,6 +106,8 @@ WHERE task_id = ANY($1::uuid[]) AND deleted_at IS NULL
 ORDER BY task_id, created_at, id
 `
 
+// Not filtered by user: the caller first locks the row this one belongs
+// to through a *ForUser query (list_members) in the same transaction.
 func (q *Queries) LiveRemindersForTasks(ctx context.Context, taskIds []uuid.UUID) ([]Reminder, error) {
 	rows, err := q.db.Query(ctx, liveRemindersForTasks, taskIds)
 	if err != nil {
@@ -142,6 +148,8 @@ ORDER BY id
 FOR UPDATE
 `
 
+// Not filtered by user: the caller first locks the row this one belongs
+// to through a *ForUser query (list_members) in the same transaction.
 // A task's live reminders, locked, to recompute them after the task
 // changed. The caller holds the task's lock already.
 func (q *Queries) LockLiveRemindersOfTask(ctx context.Context, taskID uuid.UUID) ([]Reminder, error) {
@@ -184,6 +192,8 @@ ORDER BY id
 FOR UPDATE
 `
 
+// Not filtered by user: the caller first locks the row this one belongs
+// to through a *ForUser query (list_members) in the same transaction.
 // The live reminders of several tasks, locked before a seq is taken:
 // deleting or restoring a list recomputes them after writing its tasks,
 // and a restore writes them again (D-67).
@@ -343,6 +353,8 @@ const reminderExists = `-- name: ReminderExists :one
 SELECT EXISTS (SELECT 1 FROM reminders WHERE id = $1)
 `
 
+// Not filtered by user on purpose: an id taken by another user is a
+// conflict (D-23), so creation must see every row.
 func (q *Queries) ReminderExists(ctx context.Context, id uuid.UUID) (bool, error) {
 	row := q.db.QueryRow(ctx, reminderExists, id)
 	var exists bool
@@ -363,6 +375,8 @@ type RewriteRemindersParams struct {
 	Seqs []int64
 }
 
+// Not filtered by user: the caller first locks the row this one belongs
+// to through a *ForUser query (list_members) in the same transaction.
 // Writes reminders again, content unchanged, each with a new version and
 // its own seq: a restored task's reminders reach the devices that synced
 // while it was deleted (D-67). ids and seqs are parallel arrays.
@@ -393,6 +407,8 @@ type UpdateReminderParams struct {
 	ID            uuid.UUID
 }
 
+// Not filtered by user: the caller first locks the row this one belongs
+// to through a *ForUser query (list_members) in the same transaction.
 // Writes every mutable column; the caller read the row under lock.
 func (q *Queries) UpdateReminder(ctx context.Context, arg UpdateReminderParams) error {
 	_, err := q.db.Exec(ctx, updateReminder,
