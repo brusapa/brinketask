@@ -54,16 +54,19 @@ type ListMember struct {
 }
 
 type NotificationDelivery struct {
-	ID             uuid.UUID
-	ReminderID     uuid.UUID
-	FireAt         time.Time
-	SubscriptionID uuid.UUID
-	Status         string
-	Attempts       int32
-	NextAttemptAt  *time.Time
-	SentAt         *time.Time
-	Error          *string
-	CreatedAt      time.Time
+	ID                uuid.UUID
+	ReminderID        uuid.UUID
+	FireAt            time.Time
+	SubscriptionID    uuid.UUID
+	Status            string
+	Attempts          int32
+	NextAttemptAt     *time.Time
+	SentAt            *time.Time
+	Error             *string
+	CreatedAt         time.Time
+	OccurrenceDueDate *time.Time
+	OccurrenceDueTime pgtype.Time
+	OccurrenceDueTz   *string
 }
 
 type PushSubscription struct {

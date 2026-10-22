@@ -510,3 +510,88 @@ func TestReassignedDeviceGetsNoReminderOfPreviousOwner(t *testing.T) {
 		t.Errorf("deliveries = %v", d)
 	}
 }
+
+// D-66: a delivery waiting for a retry is skipped, not sent, once it is
+// stale: its device is disabled, its task is done, deleted or moved to
+// another occurrence (whose Complete action would act on the wrong one,
+// D-10), or the server was down for longer than the maximum lateness.
+func TestStaleRetriesAreSkipped(t *testing.T) {
+	today := time.Date(2026, 10, 8, 0, 0, 0, 0, time.UTC)
+	for name, change := range map[string]func(t *testing.T, e *env, taskID uuid.UUID){
+		"recurring task advanced": func(t *testing.T, e *env, taskID uuid.UUID) {
+			if _, err := e.tasks.Complete(context.Background(), e.user, taskID, tasks.CompleteInput{CompletionID: uuid.New(), OccurrenceDueDate: &today}); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"due time changed": func(t *testing.T, e *env, taskID uuid.UUID) {
+			if _, err := e.tasks.PatchTask(context.Background(), e.user, taskID, tasks.TaskPatch{DueTime: nullable.NewNullableWithValue("17:00")}); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"task deleted": func(t *testing.T, e *env, taskID uuid.UUID) {
+			if err := e.tasks.DeleteTask(context.Background(), e.user, taskID); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"device disabled": func(t *testing.T, e *env, _ uuid.UUID) {
+			if _, err := e.pool.Exec(context.Background(), "UPDATE push_subscriptions SET disabled_at = $1", start); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"server down for 13 hours": func(_ *testing.T, e *env, _ uuid.UUID) {
+			e.clock.Advance(13 * time.Hour)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			e := setup(t)
+			ctx := context.Background()
+			e.device(t, "phone")
+			rule, at := "FREQ=DAILY", "09:00"
+			task, _, err := e.tasks.CreateTask(ctx, e.user, tasks.NewTask{
+				ID: uuid.New(), ListID: e.inbox, Title: "Daily", Position: "a", RepeatFrom: "due",
+				DueDate: &today, DueTime: &at, Rrule: &rule,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, _, err := e.tasks.CreateReminder(ctx, e.user, task.ID, tasks.NewReminder{ID: uuid.New(), Kind: "absolute", At: &start}); err != nil {
+				t.Fatal(err)
+			}
+			e.push.Answer("phone", http.StatusServiceUnavailable)
+			e.tick(t) // the first attempt fails
+
+			change(t, e, task.ID)
+			e.clock.Advance(30 * time.Second)
+			e.tick(t)
+			if got := len(e.push.Messages()); got != 0 {
+				t.Errorf("a stale delivery was sent: %d message(s)", got)
+			}
+			if d := e.deliveries(t); d["skipped"] != 1 || len(d) != 1 {
+				t.Errorf("deliveries = %v", d)
+			}
+		})
+	}
+}
+
+// D-66: a retry of a task that did not change carries the occurrence the
+// reminder fired for.
+func TestRetrySendsItsOccurrence(t *testing.T) {
+	e := setup(t)
+	e.device(t, "phone")
+	e.task(t, "Flaky", start)
+	e.push.Answer("phone", http.StatusServiceUnavailable)
+	e.tick(t)
+	e.clock.Advance(30 * time.Second)
+	e.tick(t)
+	messages := e.push.Messages()
+	if len(messages) != 1 {
+		t.Fatalf("messages = %d", len(messages))
+	}
+	var p map[string]any
+	if err := json.Unmarshal(messages[0].Payload, &p); err != nil {
+		t.Fatal(err)
+	}
+	if p["due_date"] != "2026-10-10" {
+		t.Errorf("payload = %v", p)
+	}
+}

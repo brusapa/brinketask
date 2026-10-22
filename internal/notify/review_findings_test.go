@@ -6,71 +6,13 @@ package notify_test
 
 import (
 	"context"
-	"encoding/json"
-	"net/http"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/brusapa/brinketask/internal/notify"
-	"github.com/brusapa/brinketask/internal/tasks"
 )
-
-// M5 (D-10): a retried delivery speaks of the occurrence its reminder
-// fired for. Once that occurrence is completed, a retry must not present
-// the next one, whose Complete action would complete it.
-func TestReviewM5RetryDoesNotPresentNextOccurrence(t *testing.T) {
-	e := setup(t)
-	ctx := context.Background()
-	e.device(t, "phone")
-	today := time.Date(2026, 10, 8, 0, 0, 0, 0, time.UTC)
-	rule := "FREQ=DAILY"
-	task, _, err := e.tasks.CreateTask(ctx, e.user, tasks.NewTask{
-		ID: uuid.New(), ListID: e.inbox, Title: "Daily", Position: "a", RepeatFrom: "due", DueDate: &today, Rrule: &rule,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, _, err := e.tasks.CreateReminder(ctx, e.user, task.ID, tasks.NewReminder{ID: uuid.New(), Kind: "absolute", At: &start}); err != nil {
-		t.Fatal(err)
-	}
-	e.push.Answer("phone", http.StatusServiceUnavailable)
-	e.tick(t) // the first attempt fails
-
-	if _, err := e.tasks.Complete(ctx, e.user, task.ID, tasks.CompleteInput{CompletionID: uuid.New(), OccurrenceDueDate: &today}); err != nil {
-		t.Fatal(err)
-	}
-	e.clock.Advance(30 * time.Second)
-	e.tick(t)
-	for _, m := range e.push.Messages() {
-		var p map[string]any
-		if err := json.Unmarshal(m.Payload, &p); err != nil {
-			t.Fatal(err)
-		}
-		if p["due_date"] == "2026-10-09" {
-			t.Errorf("the retry of the 2026-10-08 reminder presents the next occurrence: %v", p)
-		}
-	}
-}
-
-// M5 (SPEC section 6): a device disabled by a 404 or 410 gets nothing
-// more, including deliveries that were already queued for it.
-func TestReviewM5DisabledDeviceGetsNoQueuedDelivery(t *testing.T) {
-	e := setup(t)
-	e.device(t, "phone")
-	e.task(t, "First", start)
-	e.task(t, "Second", start)
-	// Both first attempts fail; the first retry learns the device is gone.
-	e.push.Answer("phone", http.StatusServiceUnavailable, http.StatusServiceUnavailable, http.StatusGone)
-	e.tick(t)
-	e.clock.Advance(30 * time.Second)
-	e.tick(t)
-	if got := len(e.push.Messages()); got != 0 {
-		t.Errorf("a disabled device received %d message(s)", got)
-	}
-}
 
 // M7 (D-32, /push/subscriptions): a browser that renewed its subscription
 // registers the new endpoint under its known device id; reminders then go

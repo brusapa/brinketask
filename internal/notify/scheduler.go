@@ -155,9 +155,16 @@ func (s *Scheduler) fire(ctx context.Context, q *dbgen.Queries, r dbgen.Reminder
 			s.observer.Delivery(statusSkipped)
 		}
 	}
+	// The occurrence the deliveries are about: retries send it even if the
+	// task has advanced since (D-66).
+	due, err := q.TaskDueOfReminder(ctx, r.ID)
+	if err != nil {
+		return err
+	}
 	for _, device := range devices {
 		err := q.InsertDelivery(ctx, dbgen.InsertDeliveryParams{
 			ReminderID: r.ID, FireAt: fireAt, SubscriptionID: device, Status: status, NextAttemptAt: next, Now: now,
+			OccurrenceDueDate: due.DueDate, OccurrenceDueTime: due.DueTime, OccurrenceDueTz: due.DueTz,
 		})
 		if err != nil {
 			return err
@@ -196,13 +203,11 @@ func (s *Scheduler) sendDue(ctx context.Context) (int, error) {
 }
 
 func (s *Scheduler) send(ctx context.Context, q *dbgen.Queries, d dbgen.ClaimDueDeliveryRow) error {
-	if !d.RecipientIsMember {
-		// The device moved to another user after the reminder fired (D-32):
-		// that user must not see the task (SPEC section 7).
-		return s.skip(ctx, q, d.ID, "the device belongs to a user without access to the task")
+	if reason := s.staleReason(d); reason != "" {
+		return s.skip(ctx, q, d.ID, reason)
 	}
 	payload, err := reminderPayload(d.TaskID, d.ReminderID, d.Title, d.ListName, d.IsInbox,
-		d.DueDate, d.DueTime, d.DueTz, d.Timezone, d.FireAt)
+		d.OccurrenceDueDate, d.OccurrenceDueTime, d.OccurrenceDueTz, d.Timezone, d.FireAt)
 	if err != nil {
 		return err
 	}
@@ -241,9 +246,53 @@ func (s *Scheduler) send(ctx context.Context, q *dbgen.Queries, d dbgen.ClaimDue
 	}
 }
 
+// staleReason says why a pending delivery may no longer go out, or ""
+// when it may (D-66). Between a failed attempt and its retry the device
+// can be disabled or move to another user, the task can be completed,
+// deleted or advanced to another occurrence, and the server can be down
+// for longer than the reminder is worth.
+func (s *Scheduler) staleReason(d dbgen.ClaimDueDeliveryRow) string {
+	switch {
+	case !d.RecipientIsMember:
+		// The device moved to another user after the reminder fired (D-32):
+		// that user must not see the task (SPEC section 7).
+		return "the device belongs to a user without access to the task"
+	case d.DeviceDisabled:
+		return "the device is disabled"
+	case !d.TaskOpen:
+		return "the task is no longer open"
+	case !sameDate(d.CurrentDueDate, d.OccurrenceDueDate) || d.CurrentDueTime != d.OccurrenceDueTime ||
+		!samePointer(d.CurrentDueTz, d.OccurrenceDueTz):
+		// Advanced or moved: the message would show an occurrence that is
+		// gone, and its Complete action would act on another one (D-10).
+		// A moved task's relative reminders are recomputed and fire anew.
+		return "the task's due changed since the reminder fired"
+	case s.clock.Now().Sub(d.FireAt) > s.maxLateness:
+		return "too late"
+	}
+	return ""
+}
+
 // skip ends a pending delivery without sending it; reason, kept in the
 // delivery's error column, names no user data.
 func (s *Scheduler) skip(ctx context.Context, q *dbgen.Queries, id uuid.UUID, reason string) error {
 	s.observer.Delivery(statusSkipped)
 	return q.MarkDeliverySkipped(ctx, dbgen.MarkDeliverySkippedParams{Reason: &reason, ID: id})
+}
+
+// samePointer compares two optional values. T is a type parameter, like a
+// C++ template argument: any type whose values compare with ==.
+func samePointer[T comparable](a, b *T) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
+}
+
+// sameDate compares two optional calendar dates; nil is no date.
+func sameDate(a, b *time.Time) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return a.Equal(*b)
 }

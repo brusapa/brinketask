@@ -111,7 +111,7 @@ Each decision has an identifier so it can be cited in commits and reviews.
 | D-63 | The Web Push sender (VAPID, RFC 8292; `aes128gcm` payload encryption, RFC 8291) is our own, on the Go standard library, tested against the RFC 8291 example | About 250 lines with an official test vector, against a library whose last release is from January 2025 and that pulls older dependencies |
 | D-64 | A notification has two actions, **Complete** and **Snooze 10 min**, the most browsers show (Chrome's `Notification.maxActions` is 2). Tapping the notification opens the task, whose detail offers Snooze for 10 min, 1 h or tomorrow at the default time | Section 6 asked for more actions than browsers display |
 | D-65 | The push payload carries data only (task, title, list name and whether it is the inbox, due fields, user zone, reminder); the service worker writes the notification text with the web client's message catalog and `Intl` | One i18n layer, in the client; the server holds no UI text |
-| D-66 | A delivery that fails is retried after 30 s, 1 min, 2 min, 4 min and 8 min (`notification_deliveries.next_attempt_at`); after the fifth failed attempt it is `failed`. A 404 or 410 from the push service disables the subscription at once | Section 6 asked for at most 5 retries with exponential backoff and gave no schedule |
+| D-66 | A delivery that fails is retried after 30 s, 1 min, 2 min, 4 min and 8 min (`notification_deliveries.next_attempt_at`); after the fifth failed attempt it is `failed`. A 404 or 410 from the push service disables the subscription at once. A message carries the occurrence stored in its delivery. Before each attempt a delivery is `skipped` instead if its device is disabled or its owner is no longer a member of the task's list (D-32), its task is no longer open or is deleted, the task's due fields differ from that occurrence, or `fire_at` is more than `REMINDER_MAX_LATENESS` ago | Section 6 asked for at most 5 retries with exponential backoff and gave no schedule |
 | D-67 | Deleting a task keeps its reminders, with `next_fire_at` null; they come back with it, as its checklist does, and a restore writes them again in the same way (D-45). An `absolute` reminder created in the past is accepted with `next_fire_at` null; only `snooze` refuses a past instant (D-32) | A past absolute reminder is history, not an error |
 | D-68 | `brinketask vapid-keys` prints a new VAPID key pair, for operators, the development setup and the smoke test | Generating P-256 keys in the expected encoding needs a tool |
 | D-69 | The web client labels a device from its browser and system ("Chrome on Linux"); labels cannot be changed, since the contract has no `PATCH` for subscriptions | Enough to tell devices apart |
@@ -212,7 +212,7 @@ At most 5 live reminders per task (`snooze` reminders do not count).
 
 ### notification_deliveries
 
-`id`, `reminder_id`, `fire_at`, `subscription_id`, `status` (`pending | sent | failed | skipped`), `attempts`, `next_attempt_at` (D-66), `sent_at`, `error`. Unique on (`reminder_id`, `fire_at`, `subscription_id`) so nothing is sent twice.
+`id`, `reminder_id`, `fire_at`, `subscription_id`, `status` (`pending | sent | failed | skipped`), `attempts`, `next_attempt_at` (D-66), `sent_at`, `error`, and the occurrence it is about: `occurrence_due_date`, `occurrence_due_time`, `occurrence_due_tz` (the task's due fields when the reminder fired). Unique on (`reminder_id`, `fire_at`, `subscription_id`) so nothing is sent twice.
 
 ### sessions
 
