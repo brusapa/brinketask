@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/brusapa/brinketask/internal/clock"
@@ -95,6 +96,27 @@ func (d *Devices) Register(ctx context.Context, userID uuid.UUID, in NewDevice) 
 	if err := checkKeys(in); err != nil {
 		return Device{}, false, &tasks.ValidationError{Fields: []tasks.FieldError{{Field: "/keys", Message: err.Error()}}}
 	}
+	result, created, err := d.register(ctx, userID, in)
+	if isUniqueViolation(err) {
+		// Lost a race: another request inserted this id or endpoint at the
+		// same time. Run again; now it finds the row and answers as a
+		// repeat (D-04).
+		result, created, err = d.register(ctx, userID, in)
+	}
+	if err != nil {
+		var conflict *tasks.ConflictError
+		if errors.As(err, &conflict) {
+			return Device{}, false, err
+		}
+		return Device{}, false, fmt.Errorf("notify: register device: %w", err)
+	}
+	return result, created, nil
+}
+
+// register is one transaction of Register. The endpoint is looked up
+// first: when it and the id name different devices, the endpoint wins,
+// since it is what the push service delivers to.
+func (d *Devices) register(ctx context.Context, userID uuid.UUID, in NewDevice) (Device, bool, error) {
 	var result Device
 	created := false
 	now := d.clock.Now()
@@ -109,8 +131,10 @@ func (d *Devices) Register(ctx context.Context, userID uuid.UUID, in NewDevice) 
 		}
 		switch {
 		case err == nil:
+			// Found by id, the browser renewed its subscription: the new
+			// endpoint replaces the old one along with the keys.
 			err = q.RefreshSubscription(ctx, dbgen.RefreshSubscriptionParams{
-				ID: existing.ID, UserID: userID, P256dh: in.P256dh, Auth: in.Auth, Label: in.Label,
+				ID: existing.ID, UserID: userID, Endpoint: in.Endpoint, P256dh: in.P256dh, Auth: in.Auth, Label: in.Label,
 			})
 			if err != nil {
 				return err
@@ -131,14 +155,13 @@ func (d *Devices) Register(ctx context.Context, userID uuid.UUID, in NewDevice) 
 		result, err = q.GetSubscriptionForUser(ctx, dbgen.GetSubscriptionForUserParams{ID: in.ID, UserID: userID})
 		return err
 	})
-	if err != nil {
-		var conflict *tasks.ConflictError
-		if errors.As(err, &conflict) {
-			return Device{}, false, err
-		}
-		return Device{}, false, fmt.Errorf("notify: register device: %w", err)
-	}
-	return result, created, nil
+	return result, created, err
+}
+
+// isUniqueViolation reports a PostgreSQL unique_violation (SQLSTATE 23505).
+func isUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }
 
 // Delete removes one of the caller's devices for good (D-32).
@@ -192,6 +215,9 @@ const sendTimeout = 15 * time.Second
 // posts to it, so it must be https and must not name this machine or an
 // address directly, which keeps a user from pointing it at internal
 // services (SSRF). Browsers' push services all use https host names.
+// This is the early, readable refusal; the push client refuses internal
+// addresses again when it connects (webpush.NewClient), which also covers
+// names that resolve to them.
 func (d *Devices) checkEndpoint(endpoint string) error {
 	u, err := url.Parse(endpoint)
 	if err != nil || u.Host == "" {
@@ -203,8 +229,10 @@ func (d *Devices) checkEndpoint(endpoint string) error {
 	if u.Scheme != "https" {
 		return errors.New("must use https")
 	}
-	host := u.Hostname()
-	if host == "localhost" || net.ParseIP(host) != nil {
+	// Host names are case-insensitive and may end with the root's dot;
+	// every name under localhost is this machine too (RFC 6761).
+	host := strings.TrimSuffix(strings.ToLower(u.Hostname()), ".")
+	if host == "localhost" || strings.HasSuffix(host, ".localhost") || net.ParseIP(host) != nil {
 		return errors.New("must be a push service host name")
 	}
 	return nil

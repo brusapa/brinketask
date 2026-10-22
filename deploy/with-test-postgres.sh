@@ -65,5 +65,27 @@ fi
 started=1
 
 export TEST_DATABASE_URL="postgresql:///postgres?host=$dir&user=postgres"
-# Not exec: the trap above must run after the command.
-"$@"
+
+# Not exec: the trap above must run after the command. Not a foreground
+# command either: bash runs a trap only once the foreground command ends,
+# so a signal sent to this script alone (a process supervisor, a CI
+# runner cancelling it) would wait for the command, possibly forever.
+# The command runs in the background, in a process group of its own (set
+# -m, job control), and the script waits for it with the wait builtin,
+# which a trapped signal interrupts. The trap passes the signal on to the
+# whole group, the command and everything it started, waits for them, and
+# exits through the EXIT trap. Ctrl-C reaches the script, which passes it
+# on the same way. A background process group cannot read the terminal,
+# so the command must not prompt; <&0 keeps a piped standard input.
+forward() {
+  kill -"$1" -- "-$child" 2>/dev/null || true
+  wait "$child" 2>/dev/null || true
+  exit "$2"
+}
+set -m
+"$@" <&0 &
+child=$!
+set +m
+trap 'forward INT 130' INT
+trap 'forward TERM 143' TERM
+wait "$child"

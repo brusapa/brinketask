@@ -309,6 +309,10 @@ export class Actions {
       );
       if (!result.ok) return undefined;
       this.replica.putTask(result.value.task);
+      // The response lists the task's live reminders, but the replica only
+      // adds what a response holds: the absolute and snooze reminders the
+      // server deleted (R-8) arrive as tombstones from a pull.
+      if (result.value.applied) this.refresh();
       this.o.onCompletionsChanged();
       return result.value.applied
         ? { completionId: body.completion_id, task: result.value.task }

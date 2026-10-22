@@ -183,23 +183,26 @@ func (q *Queries) LockSubscriptionByID(ctx context.Context, id uuid.UUID) (PushS
 
 const refreshSubscription = `-- name: RefreshSubscription :exec
 UPDATE push_subscriptions
-SET user_id = $1, p256dh = $2, auth = $3, label = $4, disabled_at = NULL
-WHERE id = $5
+SET user_id = $1, endpoint = $2, p256dh = $3, auth = $4, label = $5, disabled_at = NULL
+WHERE id = $6
 `
 
 type RefreshSubscriptionParams struct {
-	UserID uuid.UUID
-	P256dh string
-	Auth   string
-	Label  *string
-	ID     uuid.UUID
+	UserID   uuid.UUID
+	Endpoint string
+	P256dh   string
+	Auth     string
+	Label    *string
+	ID       uuid.UUID
 }
 
-// A device registering again: its keys may have changed, it may now belong
-// to another user (D-32), and it works again if it had been disabled.
+// A device registering again: its keys, and after the browser renewed its
+// subscription its endpoint, may have changed; it may now belong to another
+// user (D-32), and it works again if it had been disabled.
 func (q *Queries) RefreshSubscription(ctx context.Context, arg RefreshSubscriptionParams) error {
 	_, err := q.db.Exec(ctx, refreshSubscription,
 		arg.UserID,
+		arg.Endpoint,
 		arg.P256dh,
 		arg.Auth,
 		arg.Label,

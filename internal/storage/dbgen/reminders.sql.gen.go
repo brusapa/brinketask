@@ -177,6 +177,36 @@ func (q *Queries) LockLiveRemindersOfTask(ctx context.Context, taskID uuid.UUID)
 	return items, nil
 }
 
+const lockLiveRemindersOfTasks = `-- name: LockLiveRemindersOfTasks :many
+SELECT id FROM reminders
+WHERE task_id = ANY($1::uuid[]) AND deleted_at IS NULL
+ORDER BY id
+FOR UPDATE
+`
+
+// The live reminders of several tasks, locked before a seq is taken:
+// deleting or restoring a list recomputes them after writing its tasks,
+// and a restore writes them again (D-67).
+func (q *Queries) LockLiveRemindersOfTasks(ctx context.Context, taskIds []uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, lockLiveRemindersOfTasks, taskIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockLiveRemindersOfUser = `-- name: LockLiveRemindersOfUser :many
 SELECT r.id, r.task_id, r.kind, r.offset_minutes, r.at, r.next_fire_at, r.last_fired_at, r.version, r.seq, r.created_at, r.updated_at, r.deleted_at, t.id, t.list_id, t.title, t.description, t.status, t.priority, t.position, t.due_date, t.due_time, t.due_tz, t.rrule, t.repeat_from, t.recurrence_done_count, t.completed_at, t.tag_ids, t.deleted_with_list_id, t.version, t.seq, t.created_at, t.updated_at, t.deleted_at, t.recurrence_start
 FROM reminders r
@@ -289,6 +319,26 @@ func (q *Queries) LockReminderForUser(ctx context.Context, arg LockReminderForUs
 	return i, err
 }
 
+const lockTaskOfReminder = `-- name: LockTaskOfReminder :exec
+SELECT t.id FROM tasks t
+JOIN reminders r ON r.task_id = t.id
+JOIN list_members m ON m.list_id = t.list_id AND m.user_id = $1
+WHERE r.id = $2
+FOR SHARE OF t
+`
+
+type LockTaskOfReminderParams struct {
+	UserID uuid.UUID
+	ID     uuid.UUID
+}
+
+// Share-locks the task of a reminder before the reminder is locked, in the
+// lock order of LockTaskOfChecklistItem.
+func (q *Queries) LockTaskOfReminder(ctx context.Context, arg LockTaskOfReminderParams) error {
+	_, err := q.db.Exec(ctx, lockTaskOfReminder, arg.UserID, arg.ID)
+	return err
+}
+
 const reminderExists = `-- name: ReminderExists :one
 SELECT EXISTS (SELECT 1 FROM reminders WHERE id = $1)
 `
@@ -298,6 +348,29 @@ func (q *Queries) ReminderExists(ctx context.Context, id uuid.UUID) (bool, error
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
+}
+
+const rewriteReminders = `-- name: RewriteReminders :exec
+UPDATE reminders r
+SET version = r.version + 1, seq = v.seq, updated_at = $1
+FROM (SELECT unnest($2::uuid[]) AS id, unnest($3::bigint[]) AS seq) AS v
+WHERE r.id = v.id
+`
+
+type RewriteRemindersParams struct {
+	Now  time.Time
+	Ids  []uuid.UUID
+	Seqs []int64
+}
+
+// Writes reminders again, content unchanged, each with a new version and
+// its own seq: a restored task's reminders reach the devices that synced
+// while it was deleted (D-67). ids and seqs are parallel arrays.
+// Two unnest calls in one SELECT list advance together, pairing ids[i]
+// with seqs[i].
+func (q *Queries) RewriteReminders(ctx context.Context, arg RewriteRemindersParams) error {
+	_, err := q.db.Exec(ctx, rewriteReminders, arg.Now, arg.Ids, arg.Seqs)
+	return err
 }
 
 const updateReminder = `-- name: UpdateReminder :exec

@@ -234,6 +234,9 @@ func (s *Service) PatchTask(ctx context.Context, userID, id uuid.UUID, patch Tas
 		if err != nil {
 			return err
 		}
+		if err := lockReminders(ctx, q, id); err != nil {
+			return err
+		}
 
 		updated := current
 		if patch.ListID != nil {
@@ -279,6 +282,13 @@ func (s *Service) PatchTask(ctx context.Context, userID, id uuid.UUID, patch Tas
 			updated.Rrule = rule
 		}
 		updateSeries(&updated, current)
+		// D-25: undoing a completion restores the due date it saved, not the
+		// rule; a rule added after completing would outlive the date it
+		// needs. The recurrence of a done task changes after reopening it.
+		if current.Status == StatusDone &&
+			(!equalPointers(updated.Rrule, current.Rrule) || updated.RepeatFrom != current.RepeatFrom) {
+			return conflict("a completed task is reopened with uncomplete before its recurrence changes")
+		}
 		if patch.Status != nil && *patch.Status != current.Status {
 			if current.Status == StatusDone {
 				return conflict("a completed task is reopened with uncomplete")
@@ -298,9 +308,14 @@ func (s *Service) PatchTask(ctx context.Context, userID, id uuid.UUID, patch Tas
 		if err := s.writeTask(ctx, q, &updated); err != nil {
 			return err
 		}
-		// Due fields, status or rule may have changed (SPEC section 6).
-		if err := s.recompute(ctx, q, userID, updated, false); err != nil {
-			return err
+		// Only the inputs of the computation recompute (SPEC section 6). A
+		// recompute turns a fire instant that has just passed into null,
+		// so an edit of, say, the title between that instant and the next
+		// scheduler poll would cancel a reminder about to be sent.
+		if schedulingChanged(updated, current) {
+			if err := s.recompute(ctx, q, userID, updated, false); err != nil {
+				return err
+			}
 		}
 		task, err = withChecklist(ctx, q, updated)
 		return err
@@ -326,6 +341,9 @@ func (s *Service) DeleteTask(ctx context.Context, userID, id uuid.UUID) error {
 		if current.DeletedAt != nil {
 			return nil
 		}
+		if err := lockReminders(ctx, q, id); err != nil {
+			return err
+		}
 		now := s.now()
 		current.DeletedAt = &now
 		if err := s.writeTask(ctx, q, &current); err != nil {
@@ -344,6 +362,17 @@ func (s *Service) DeleteTask(ctx context.Context, userID, id uuid.UUID) error {
 func (s *Service) RestoreTask(ctx context.Context, userID, id uuid.UUID) (Task, error) {
 	var task Task
 	err := s.inTx(ctx, func(q *dbgen.Queries) error {
+		// The list before the task, as DeleteList locks them: otherwise the
+		// list could be deleted after this check, and its deletion would
+		// miss the task restored here (D-20). A deleted task cannot move to
+		// another list, so this is still its list once the task is locked.
+		listLive, err := q.LockListOfTaskForShare(ctx, dbgen.LockListOfTaskForShareParams{UserID: userID, ID: id})
+		if isNoRows(err) {
+			return ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
 		current, err := q.LockTaskForUser(ctx, dbgen.LockTaskForUserParams{UserID: userID, ID: id})
 		if isNoRows(err) {
 			return ErrNotFound
@@ -358,18 +387,21 @@ func (s *Service) RestoreTask(ctx context.Context, userID, id uuid.UUID) (Task, 
 		if current.DeletedWithListID != nil {
 			return conflict("the task was deleted with its list; restore the list")
 		}
-		listLive, err := q.ListIsLive(ctx, current.ListID)
-		if err != nil {
-			return err
-		}
 		if !listLive {
 			return conflict("the task's list is deleted")
 		}
 		if !restorable(*current.DeletedAt, s.now()) {
 			return conflict("the task was deleted more than 30 days ago")
 		}
+		children, err := lockRestoredChildren(ctx, q, []uuid.UUID{id})
+		if err != nil {
+			return err
+		}
 		current.DeletedAt = nil
 		if err := s.writeTask(ctx, q, &current); err != nil {
+			return err
+		}
+		if err := s.rewriteChildren(ctx, q, children); err != nil {
 			return err
 		}
 		if err := s.recompute(ctx, q, userID, current, false); err != nil {
@@ -450,6 +482,64 @@ func checkChecklistIDs(items []NewChecklistItem) []FieldError {
 	return nil
 }
 
+// lockReminders locks the live reminders of a task whose lock the caller
+// holds, before the write takes a seq. Every write locks in one order: a
+// list, a task, its children, and the seq last (D-07). The scheduler holds
+// a reminder when it asks for a seq; a task write that took the seq first
+// and then waited for that reminder would deadlock with it. Checklist
+// items need no such step: their writes lock the task before the item.
+func lockReminders(ctx context.Context, q *dbgen.Queries, taskID uuid.UUID) error {
+	_, err := q.LockLiveRemindersOfTask(ctx, taskID)
+	return err
+}
+
+// restoredChildren are the live checklist items and reminders of tasks
+// being restored.
+type restoredChildren struct {
+	items     []uuid.UUID
+	reminders []uuid.UUID
+}
+
+// lockRestoredChildren locks the live children of tasks about to be
+// restored, before the restore takes a seq (see lockReminders).
+func lockRestoredChildren(ctx context.Context, q *dbgen.Queries, taskIDs []uuid.UUID) (restoredChildren, error) {
+	reminders, err := q.LockLiveRemindersOfTasks(ctx, taskIDs)
+	if err != nil {
+		return restoredChildren{}, err
+	}
+	items, err := q.LockLiveItemIDsOfTasks(ctx, taskIDs)
+	if err != nil {
+		return restoredChildren{}, err
+	}
+	return restoredChildren{items: items, reminders: reminders}, nil
+}
+
+// rewriteChildren writes the children of restored tasks again, content
+// unchanged, each with a new version and seq (D-45, D-67). Their last
+// write may be older than the cursor of a device whose full sync ran
+// while the task was deleted, and a full sync leaves out the children of
+// deleted tasks; without a new seq that device would never get them.
+func (s *Service) rewriteChildren(ctx context.Context, q *dbgen.Queries, c restoredChildren) error {
+	now := s.now()
+	if len(c.items) > 0 {
+		seqs, err := reserveSeqs(ctx, q, len(c.items))
+		if err != nil {
+			return err
+		}
+		if err := q.RewriteChecklistItems(ctx, dbgen.RewriteChecklistItemsParams{Ids: c.items, Seqs: seqs, Now: now}); err != nil {
+			return err
+		}
+	}
+	if len(c.reminders) > 0 {
+		seqs, err := reserveSeqs(ctx, q, len(c.reminders))
+		if err != nil {
+			return err
+		}
+		return q.RewriteReminders(ctx, dbgen.RewriteRemindersParams{Ids: c.reminders, Seqs: seqs, Now: now})
+	}
+	return nil
+}
+
 // writeTask stores a changed task: one more version and a new seq (D-07).
 func (s *Service) writeTask(ctx context.Context, q *dbgen.Queries, task *dbgen.Task) error {
 	seq, err := q.NextSeq(ctx)
@@ -471,11 +561,17 @@ func (s *Service) writeTask(ctx context.Context, q *dbgen.Queries, task *dbgen.T
 
 // sameTask compares the fields a patch can change.
 func sameTask(a, b dbgen.Task) bool {
-	return a.ListID == b.ListID && a.Title == b.Title && a.Description == b.Description &&
-		a.Status == b.Status && a.Priority == b.Priority && a.Position == b.Position &&
-		equalDates(a.DueDate, b.DueDate) && a.DueTime == b.DueTime &&
-		equalPointers(a.DueTz, b.DueTz) && equalPointers(a.Rrule, b.Rrule) &&
+	return !schedulingChanged(a, b) && a.ListID == b.ListID && a.Title == b.Title &&
+		a.Description == b.Description && a.Priority == b.Priority && a.Position == b.Position &&
 		a.RepeatFrom == b.RepeatFrom && slices.Equal(a.TagIds, b.TagIds)
+}
+
+// schedulingChanged reports a change of what a task's reminders are
+// computed from: its due fields, its status or its rule (SPEC section 6;
+// the contract's patchTask).
+func schedulingChanged(a, b dbgen.Task) bool {
+	return !equalDates(a.DueDate, b.DueDate) || a.DueTime != b.DueTime ||
+		!equalPointers(a.DueTz, b.DueTz) || a.Status != b.Status || !equalPointers(a.Rrule, b.Rrule)
 }
 
 // equalDates compares two optional calendar dates.

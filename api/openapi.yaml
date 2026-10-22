@@ -251,6 +251,7 @@ paths:
       operationId: patchTask
       description: |
         `status` accepts only `open` and `dropped` here; use /complete for `done`.
+        On a `done` task, changing `rrule` or `repeat_from` answers 409 (SPEC D-25).
         Changing due fields, `rrule` or `status` recomputes reminders.
       requestBody:
         required: true
@@ -711,7 +712,7 @@ paths:
             schema: { $ref: '#/components/schemas/PushSubscriptionCreate' }
       responses:
         '200':
-          description: Already existed; keys refreshed
+          description: Already existed; keys, and for a known id a renewed endpoint, refreshed (SPEC D-32)
           content:
             application/json:
               schema: { $ref: '#/components/schemas/PushSubscription' }
@@ -950,7 +951,9 @@ components:
       type: string
       maxLength: 200
       nullable: true
-      description: RFC 5545 RRULE restricted to the subset in SPEC section 5. Requires `due_date`.
+      description: |
+        RFC 5545 RRULE restricted to the subset in SPEC section 5, e.g. INTERVAL 1-999 and
+        COUNT 1-1000000. Requires `due_date`.
       example: FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE
 
     Task:

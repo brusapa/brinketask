@@ -31,14 +31,25 @@ export function CompletedSection({ scope, now }: { scope: Scope; now: Date }) {
     // The key names everything the result depends on, so a new day or
     // scope fetches again.
     queryKey: ["completions", scope, from, to],
-    queryFn: () =>
-      unwrap(() =>
-        api.GET("/completions", {
-          params: { query: { ...scope, completed_from: from, completed_to: to, limit: 500 } },
-        }),
-      ),
+    // Every page of the day: the section shows all of it, and its count.
+    queryFn: async () => {
+      const all: CompletionEntry[] = [];
+      let cursor: string | null = null;
+      do {
+        const query = { ...scope, completed_from: from, completed_to: to, limit: 500 };
+        // The spread adds `cursor` only from the second page on.
+        const page = await unwrap(() =>
+          api.GET("/completions", {
+            params: { query: cursor === null ? query : { ...query, cursor } },
+          }),
+        );
+        all.push(...page.items);
+        cursor = page.next_cursor ?? null;
+      } while (cursor !== null);
+      return all;
+    },
   });
-  const entries: CompletionEntry[] = query.data?.items ?? [];
+  const entries: CompletionEntry[] = query.data ?? [];
   if (entries.length === 0) {
     return null;
   }

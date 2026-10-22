@@ -180,6 +180,10 @@ func (s *Service) DeleteList(ctx context.Context, userID, id uuid.UUID) error {
 		if err != nil {
 			return err
 		}
+		// Their reminders before any seq, as lockReminders explains.
+		if _, err := q.LockLiveRemindersOfTasks(ctx, taskIDs); err != nil {
+			return err
+		}
 		now := s.now()
 		updated := row.List
 		updated.DeletedAt = &now
@@ -231,6 +235,10 @@ func (s *Service) RestoreList(ctx context.Context, userID, id uuid.UUID) (List, 
 		if err != nil {
 			return err
 		}
+		children, err := lockRestoredChildren(ctx, q, taskIDs)
+		if err != nil {
+			return err
+		}
 		updated := row.List
 		updated.DeletedAt = nil
 		if err := s.writeList(ctx, q, &updated); err != nil {
@@ -246,6 +254,9 @@ func (s *Service) RestoreList(ctx context.Context, userID, id uuid.UUID) (List, 
 		}
 		err = q.RestoreTasksWithList(ctx, dbgen.RestoreTasksWithListParams{Now: now, Ids: taskIDs, Seqs: seqs})
 		if err != nil {
+			return err
+		}
+		if err := s.rewriteChildren(ctx, q, children); err != nil {
 			return err
 		}
 		return s.recomputeTasks(ctx, q, userID, taskIDs)

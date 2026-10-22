@@ -9,6 +9,13 @@ ORDER BY next_fire_at
 LIMIT @lim
 FOR UPDATE SKIP LOCKED;
 
+-- name: TaskDueOfReminder :one
+-- The due fields of a reminder's task when it fires: the occurrence its
+-- deliveries are about (D-66).
+SELECT t.due_date, t.due_time, t.due_tz FROM tasks t
+JOIN reminders r ON r.task_id = t.id
+WHERE r.id = @reminder_id;
+
 -- name: ActiveSubscriptionsForTask :many
 -- The devices of every member of the task's list.
 SELECT s.id FROM push_subscriptions s
@@ -19,16 +26,27 @@ ORDER BY s.id;
 
 -- name: InsertDelivery :exec
 -- ON CONFLICT: a firing already has its delivery for that device.
-INSERT INTO notification_deliveries (reminder_id, fire_at, subscription_id, status, next_attempt_at, created_at)
-VALUES (@reminder_id, @fire_at, @subscription_id, @status, @next_attempt_at, @now)
+INSERT INTO notification_deliveries (reminder_id, fire_at, subscription_id, status, next_attempt_at, created_at,
+    occurrence_due_date, occurrence_due_time, occurrence_due_tz)
+VALUES (@reminder_id, @fire_at, @subscription_id, @status, @next_attempt_at, @now,
+    @occurrence_due_date, @occurrence_due_time, @occurrence_due_tz)
 ON CONFLICT ON CONSTRAINT notification_deliveries_once DO NOTHING;
 
 -- name: ClaimDueDelivery :one
--- One pending delivery that is due, with what its message needs.
+-- One pending delivery that is due, with what its message needs and
+-- what decides whether it may still go out (D-66). A device moves to
+-- whoever registers it (D-32), so the delivery is checked against the
+-- device's current owner: every access to a task goes through
+-- list_members (SPEC section 7).
 SELECT d.id, d.reminder_id, d.fire_at, d.attempts,
+       d.occurrence_due_date, d.occurrence_due_time, d.occurrence_due_tz,
        s.id AS subscription_id, s.endpoint, s.p256dh, s.auth,
-       t.id AS task_id, t.title, t.due_date, t.due_time, t.due_tz,
-       l.name AS list_name, l.is_inbox, u.timezone
+       (s.disabled_at IS NOT NULL)::boolean AS device_disabled,
+       t.id AS task_id, t.title, t.due_date AS current_due_date,
+       t.due_time AS current_due_time, t.due_tz AS current_due_tz,
+       (t.status = 'open' AND t.deleted_at IS NULL)::boolean AS task_open,
+       l.name AS list_name, l.is_inbox, u.timezone,
+       EXISTS (SELECT 1 FROM list_members m WHERE m.list_id = t.list_id AND m.user_id = s.user_id) AS recipient_is_member
 FROM notification_deliveries d
 JOIN push_subscriptions s ON s.id = d.subscription_id
 JOIN reminders r ON r.id = d.reminder_id
@@ -53,4 +71,10 @@ WHERE id = @id;
 -- name: MarkDeliveryFailed :exec
 UPDATE notification_deliveries
 SET status = 'failed', attempts = attempts + 1, next_attempt_at = NULL, error = @error
+WHERE id = @id;
+
+-- name: MarkDeliverySkipped :exec
+-- A delivery that may no longer go out; reason says why, for operators.
+UPDATE notification_deliveries
+SET status = 'skipped', next_attempt_at = NULL, error = @reason
 WHERE id = @id;

@@ -120,6 +120,7 @@ export interface paths {
         head?: never;
         /**
          * @description `status` accepts only `open` and `dropped` here; use /complete for `done`.
+         *     On a `done` task, changing `rrule` or `repeat_from` answers 409 (SPEC D-25).
          *     Changing due fields, `rrule` or `status` recomputes reminders.
          */
         patch: operations["patchTask"];
@@ -592,7 +593,8 @@ export interface components {
         /** @enum {string} */
         RepeatFrom: "due" | "completion";
         /**
-         * @description RFC 5545 RRULE restricted to the subset in SPEC section 5. Requires `due_date`.
+         * @description RFC 5545 RRULE restricted to the subset in SPEC section 5, e.g. INTERVAL 1-999 and
+         *     COUNT 1-1000000. Requires `due_date`.
          * @example FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE
          */
         RRule: string | null;
@@ -1787,7 +1789,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Already existed; keys refreshed */
+            /** @description Already existed; keys, and for a known id a renewed endpoint, refreshed (SPEC D-32) */
             200: {
                 headers: {
                     [name: string]: unknown;

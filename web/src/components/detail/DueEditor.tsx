@@ -169,7 +169,9 @@ function DueForm({
       )}
 
       <div className="dialog-actions">
-        {date !== null && (
+        {/* A rule needs a date (D-26): the date of a repeating task goes
+            only after its repetition, which the Repeat field removes. */}
+        {date !== null && !task.rrule && (
           <Button
             className="button"
             onPress={() => {

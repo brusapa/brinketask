@@ -310,3 +310,43 @@ func TestSyncUnderConcurrentWrites(t *testing.T) {
 	a.pull(t, alice, r, cursor, 7)
 	wantReplica(t, r, a.liveState(t, alice))
 }
+
+// D-45, D-67: a device whose full sync ran while a task was deleted gets
+// the task's checklist and reminders when it is restored, though their
+// content did not change. The full state left them out (SPEC section 8).
+func TestSyncAfterRestoreBringsChildren(t *testing.T) {
+	for _, viaList := range []bool{false, true} {
+		t.Run(fmt.Sprintf("via list %v", viaList), func(t *testing.T) {
+			a := newTestApp(t)
+			alice := a.signUp(t, "alice")
+			list := a.createList(t, alice, "Errands", "b0")
+			task := a.createTask(t, alice, list.Id, "Groceries")
+			item := a.createItem(t, alice, task.Id, "Milk", "a0")
+			// In the past: nothing pending, so a recompute never rewrites it.
+			r := a.addReminder(t, alice, task.Id, absoluteBody(t, "2026-10-01T09:00:00Z"), http.StatusCreated)
+
+			deleted, restore := "/tasks/"+task.Id.String(), "/tasks/"+task.Id.String()+"/restore"
+			if viaList {
+				deleted, restore = "/lists/"+list.Id.String(), "/lists/"+list.Id.String()+"/restore"
+			}
+			if rec := a.call(t, alice, http.MethodDelete, deleted, ""); rec.Code != http.StatusNoContent {
+				t.Fatalf("delete: %d %s", rec.Code, rec.Body)
+			}
+			full := a.changes(t, alice, "", 500)
+			if len(full.ChecklistItems) != 0 || len(full.Reminders) != 0 {
+				t.Fatalf("the full state has children of a deleted task: %+v %+v", full.ChecklistItems, full.Reminders)
+			}
+			if rec := a.call(t, alice, http.MethodPost, restore, ""); rec.Code != http.StatusOK {
+				t.Fatalf("restore: %d %s", rec.Code, rec.Body)
+			}
+
+			next := a.changes(t, alice, full.NextCursor, 500)
+			if len(next.ChecklistItems) != 1 || next.ChecklistItems[0].Id != item.Id || next.ChecklistItems[0].Title != "Milk" {
+				t.Errorf("items after the restore: %+v", next.ChecklistItems)
+			}
+			if len(next.Reminders) != 1 || next.Reminders[0].Id != r.Id {
+				t.Errorf("reminders after the restore: %+v", next.Reminders)
+			}
+		})
+	}
+}

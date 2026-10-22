@@ -105,17 +105,6 @@ func (q *Queries) InsertTask(ctx context.Context, arg InsertTaskParams) error {
 	return err
 }
 
-const listIsLive = `-- name: ListIsLive :one
-SELECT (deleted_at IS NULL)::boolean FROM lists WHERE id = $1
-`
-
-func (q *Queries) ListIsLive(ctx context.Context, id uuid.UUID) (bool, error) {
-	row := q.db.QueryRow(ctx, listIsLive, id)
-	var column_1 bool
-	err := row.Scan(&column_1)
-	return column_1, err
-}
-
 const liveChecklistItemsForTasks = `-- name: LiveChecklistItemsForTasks :many
 SELECT id, task_id, title, is_done, position, version, seq, created_at, updated_at, deleted_at FROM checklist_items
 WHERE task_id = ANY($1::uuid[]) AND deleted_at IS NULL
@@ -151,6 +140,31 @@ func (q *Queries) LiveChecklistItemsForTasks(ctx context.Context, taskIds []uuid
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockListOfTaskForShare = `-- name: LockListOfTaskForShare :one
+SELECT (l.deleted_at IS NULL)::boolean AS live
+FROM lists l
+JOIN tasks t ON t.list_id = l.id
+JOIN list_members m ON m.list_id = l.id AND m.user_id = $1
+WHERE t.id = $2
+FOR SHARE OF l
+`
+
+type LockListOfTaskForShareParams struct {
+	UserID uuid.UUID
+	ID     uuid.UUID
+}
+
+// Whether the list of one of the user's tasks is live, share-locked until
+// the transaction ends: restoring a task locks its list before the task,
+// as deleting the list does (parent before child), so the list cannot be
+// deleted between the check and the restore.
+func (q *Queries) LockListOfTaskForShare(ctx context.Context, arg LockListOfTaskForShareParams) (bool, error) {
+	row := q.db.QueryRow(ctx, lockListOfTaskForShare, arg.UserID, arg.ID)
+	var live bool
+	err := row.Scan(&live)
+	return live, err
 }
 
 const lockTaskForUser = `-- name: LockTaskForUser :one

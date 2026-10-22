@@ -190,6 +190,10 @@ func checkReminderFields(kind string, offset *int, at *time.Time, task dbgen.Tas
 func (s *Service) PatchReminder(ctx context.Context, userID, id uuid.UUID, patch ReminderPatch) (Reminder, error) {
 	var result Reminder
 	err := s.inTx(ctx, func(q *dbgen.Queries) error {
+		// Lock order: the task, then the reminder, then a seq (D-07).
+		if err := q.LockTaskOfReminder(ctx, dbgen.LockTaskOfReminderParams{UserID: userID, ID: id}); err != nil {
+			return err
+		}
 		row, err := q.LockReminderForUser(ctx, dbgen.LockReminderForUserParams{UserID: userID, ID: id})
 		if isNoRows(err) || (err == nil && (row.Reminder.DeletedAt != nil || row.TaskDeleted)) {
 			return ErrNotFound
@@ -243,6 +247,9 @@ func (s *Service) PatchReminder(ctx context.Context, userID, id uuid.UUID, patch
 // answers 404, as checklist items do (D-45).
 func (s *Service) DeleteReminder(ctx context.Context, userID, id uuid.UUID) error {
 	err := s.inTx(ctx, func(q *dbgen.Queries) error {
+		if err := q.LockTaskOfReminder(ctx, dbgen.LockTaskOfReminderParams{UserID: userID, ID: id}); err != nil {
+			return err
+		}
 		row, err := q.LockReminderForUser(ctx, dbgen.LockReminderForUserParams{UserID: userID, ID: id})
 		if isNoRows(err) || (err == nil && row.TaskDeleted) {
 			return ErrNotFound
@@ -266,7 +273,8 @@ func (s *Service) DeleteReminder(ctx context.Context, userID, id uuid.UUID) erro
 // the task (SPEC section 6): after a change of its due fields, status or
 // rule, a delete or a restore. With dropOneOff (a completion or an advance,
 // R-8) absolute and snooze reminders are deleted instead. The caller holds
-// the task's lock; reminders are locked after it.
+// the task's lock and locked the reminders with lockChildren before taking
+// a seq, so locking them again here does not wait.
 func (s *Service) recompute(ctx context.Context, q *dbgen.Queries, userID uuid.UUID, task dbgen.Task, dropOneOff bool) error {
 	rows, err := q.LockLiveRemindersOfTask(ctx, task.ID)
 	if err != nil || len(rows) == 0 {

@@ -44,3 +44,32 @@ SET is_done = false, version = c.version + 1, seq = v.seq, updated_at = @now
 -- with seqs[i].
 FROM (SELECT unnest(@ids::uuid[]) AS id, unnest(@seqs::bigint[]) AS seq) AS v
 WHERE c.id = v.id;
+
+-- name: LockTaskOfChecklistItem :exec
+-- Share-locks the task of an item before the item is locked: every write
+-- takes the task first, its children second and a seq last (D-07), so a
+-- write of the task and a write of one of its items cannot deadlock.
+SELECT t.id FROM tasks t
+JOIN checklist_items c ON c.task_id = t.id
+JOIN list_members m ON m.list_id = t.list_id AND m.user_id = @user_id
+WHERE c.id = @id
+FOR SHARE OF t;
+
+-- name: LockLiveItemIDsOfTasks :many
+-- The live items of several tasks, locked before a seq is taken: a
+-- restore writes them again (D-45).
+SELECT id FROM checklist_items
+WHERE task_id = ANY(@task_ids::uuid[]) AND deleted_at IS NULL
+ORDER BY id
+FOR UPDATE;
+
+-- name: RewriteChecklistItems :exec
+-- Writes items again, content unchanged, each with a new version and its
+-- own seq: a restored task's items reach the devices that synced while it
+-- was deleted (D-45). ids and seqs are parallel arrays.
+UPDATE checklist_items c
+SET version = c.version + 1, seq = v.seq, updated_at = @now
+-- Two unnest calls in one SELECT list advance together, pairing ids[i]
+-- with seqs[i].
+FROM (SELECT unnest(@ids::uuid[]) AS id, unnest(@seqs::bigint[]) AS seq) AS v
+WHERE c.id = v.id;

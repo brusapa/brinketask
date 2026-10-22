@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // aliceSnapshot fingerprints every row of alice's that a write would
@@ -113,14 +115,33 @@ func TestAuthorizationMatrix(t *testing.T) {
 		t.Errorf("bob changed alice's data:\nbefore %s\nafter  %s", before, after)
 	}
 
-	// None of bob's listings mentions anything of alice's.
+	// None of bob's listings mentions anything of alice's. Each answers
+	// 200 and, where bob has data, shows it: an error response mentions
+	// nobody's data and would pass the check below on its own.
+	bobsTag := a.createTag(t, bob, "bob")
 	secrets := []string{list.Id.String(), tag.Id.String(), task.String(), item.Id.String(),
 		completed.Id.String(), alice.inboxID.String(), "secret"}
-	for _, path := range []string{
-		"/lists", "/lists?deleted=true", "/tags", "/tasks", "/tasks?deleted=true", "/tasks?status=done",
-		"/tasks?q=secret", "/completions?" + day, "/sync/changes",
+	for path, own := range map[string][]uuid.UUID{
+		"/lists":              {bob.inboxID},
+		"/lists?deleted=true": nil,
+		"/tags":               {bobsTag.Id},
+		"/tasks":              {bobsTask.Id},
+		"/tasks?deleted=true": nil,
+		"/tasks?status=done":  nil,
+		"/tasks?q=secret":     nil,
+		"/completions?" + day: nil,
+		"/sync/changes":       {bob.inboxID, bobsTask.Id, bobsTag.Id},
 	} {
-		body := a.call(t, bob, http.MethodGet, path, "").Body.String()
+		rec := a.call(t, bob, http.MethodGet, path, "")
+		if rec.Code != http.StatusOK {
+			t.Errorf("GET %s = %d, want 200", path, rec.Code)
+		}
+		body := rec.Body.String()
+		for _, id := range own {
+			if !strings.Contains(body, id.String()) {
+				t.Errorf("GET %s does not show bob's %s", path, id)
+			}
+		}
 		for _, secret := range secrets {
 			if strings.Contains(body, secret) {
 				t.Errorf("GET %s shows bob %q", path, secret)

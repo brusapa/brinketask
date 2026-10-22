@@ -44,9 +44,14 @@ func (q *Queries) ActiveSubscriptionsForTask(ctx context.Context, taskID uuid.UU
 
 const claimDueDelivery = `-- name: ClaimDueDelivery :one
 SELECT d.id, d.reminder_id, d.fire_at, d.attempts,
+       d.occurrence_due_date, d.occurrence_due_time, d.occurrence_due_tz,
        s.id AS subscription_id, s.endpoint, s.p256dh, s.auth,
-       t.id AS task_id, t.title, t.due_date, t.due_time, t.due_tz,
-       l.name AS list_name, l.is_inbox, u.timezone
+       (s.disabled_at IS NOT NULL)::boolean AS device_disabled,
+       t.id AS task_id, t.title, t.due_date AS current_due_date,
+       t.due_time AS current_due_time, t.due_tz AS current_due_tz,
+       (t.status = 'open' AND t.deleted_at IS NULL)::boolean AS task_open,
+       l.name AS list_name, l.is_inbox, u.timezone,
+       EXISTS (SELECT 1 FROM list_members m WHERE m.list_id = t.list_id AND m.user_id = s.user_id) AS recipient_is_member
 FROM notification_deliveries d
 JOIN push_subscriptions s ON s.id = d.subscription_id
 JOIN reminders r ON r.id = d.reminder_id
@@ -60,25 +65,35 @@ FOR UPDATE OF d SKIP LOCKED
 `
 
 type ClaimDueDeliveryRow struct {
-	ID             uuid.UUID
-	ReminderID     uuid.UUID
-	FireAt         time.Time
-	Attempts       int32
-	SubscriptionID uuid.UUID
-	Endpoint       string
-	P256dh         string
-	Auth           string
-	TaskID         uuid.UUID
-	Title          string
-	DueDate        *time.Time
-	DueTime        pgtype.Time
-	DueTz          *string
-	ListName       string
-	IsInbox        bool
-	Timezone       string
+	ID                uuid.UUID
+	ReminderID        uuid.UUID
+	FireAt            time.Time
+	Attempts          int32
+	OccurrenceDueDate *time.Time
+	OccurrenceDueTime pgtype.Time
+	OccurrenceDueTz   *string
+	SubscriptionID    uuid.UUID
+	Endpoint          string
+	P256dh            string
+	Auth              string
+	DeviceDisabled    bool
+	TaskID            uuid.UUID
+	Title             string
+	CurrentDueDate    *time.Time
+	CurrentDueTime    pgtype.Time
+	CurrentDueTz      *string
+	TaskOpen          bool
+	ListName          string
+	IsInbox           bool
+	Timezone          string
+	RecipientIsMember bool
 }
 
-// One pending delivery that is due, with what its message needs.
+// One pending delivery that is due, with what its message needs and
+// what decides whether it may still go out (D-66). A device moves to
+// whoever registers it (D-32), so the delivery is checked against the
+// device's current owner: every access to a task goes through
+// list_members (SPEC section 7).
 func (q *Queries) ClaimDueDelivery(ctx context.Context, now *time.Time) (ClaimDueDeliveryRow, error) {
 	row := q.db.QueryRow(ctx, claimDueDelivery, now)
 	var i ClaimDueDeliveryRow
@@ -87,18 +102,24 @@ func (q *Queries) ClaimDueDelivery(ctx context.Context, now *time.Time) (ClaimDu
 		&i.ReminderID,
 		&i.FireAt,
 		&i.Attempts,
+		&i.OccurrenceDueDate,
+		&i.OccurrenceDueTime,
+		&i.OccurrenceDueTz,
 		&i.SubscriptionID,
 		&i.Endpoint,
 		&i.P256dh,
 		&i.Auth,
+		&i.DeviceDisabled,
 		&i.TaskID,
 		&i.Title,
-		&i.DueDate,
-		&i.DueTime,
-		&i.DueTz,
+		&i.CurrentDueDate,
+		&i.CurrentDueTime,
+		&i.CurrentDueTz,
+		&i.TaskOpen,
 		&i.ListName,
 		&i.IsInbox,
 		&i.Timezone,
+		&i.RecipientIsMember,
 	)
 	return i, err
 }
@@ -154,18 +175,23 @@ func (q *Queries) ClaimDueReminders(ctx context.Context, arg ClaimDueRemindersPa
 }
 
 const insertDelivery = `-- name: InsertDelivery :exec
-INSERT INTO notification_deliveries (reminder_id, fire_at, subscription_id, status, next_attempt_at, created_at)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO notification_deliveries (reminder_id, fire_at, subscription_id, status, next_attempt_at, created_at,
+    occurrence_due_date, occurrence_due_time, occurrence_due_tz)
+VALUES ($1, $2, $3, $4, $5, $6,
+    $7, $8, $9)
 ON CONFLICT ON CONSTRAINT notification_deliveries_once DO NOTHING
 `
 
 type InsertDeliveryParams struct {
-	ReminderID     uuid.UUID
-	FireAt         time.Time
-	SubscriptionID uuid.UUID
-	Status         string
-	NextAttemptAt  *time.Time
-	Now            time.Time
+	ReminderID        uuid.UUID
+	FireAt            time.Time
+	SubscriptionID    uuid.UUID
+	Status            string
+	NextAttemptAt     *time.Time
+	Now               time.Time
+	OccurrenceDueDate *time.Time
+	OccurrenceDueTime pgtype.Time
+	OccurrenceDueTz   *string
 }
 
 // ON CONFLICT: a firing already has its delivery for that device.
@@ -177,6 +203,9 @@ func (q *Queries) InsertDelivery(ctx context.Context, arg InsertDeliveryParams) 
 		arg.Status,
 		arg.NextAttemptAt,
 		arg.Now,
+		arg.OccurrenceDueDate,
+		arg.OccurrenceDueTime,
+		arg.OccurrenceDueTz,
 	)
 	return err
 }
@@ -228,4 +257,42 @@ type MarkDeliverySentParams struct {
 func (q *Queries) MarkDeliverySent(ctx context.Context, arg MarkDeliverySentParams) error {
 	_, err := q.db.Exec(ctx, markDeliverySent, arg.Now, arg.ID)
 	return err
+}
+
+const markDeliverySkipped = `-- name: MarkDeliverySkipped :exec
+UPDATE notification_deliveries
+SET status = 'skipped', next_attempt_at = NULL, error = $1
+WHERE id = $2
+`
+
+type MarkDeliverySkippedParams struct {
+	Reason *string
+	ID     uuid.UUID
+}
+
+// A delivery that may no longer go out; reason says why, for operators.
+func (q *Queries) MarkDeliverySkipped(ctx context.Context, arg MarkDeliverySkippedParams) error {
+	_, err := q.db.Exec(ctx, markDeliverySkipped, arg.Reason, arg.ID)
+	return err
+}
+
+const taskDueOfReminder = `-- name: TaskDueOfReminder :one
+SELECT t.due_date, t.due_time, t.due_tz FROM tasks t
+JOIN reminders r ON r.task_id = t.id
+WHERE r.id = $1
+`
+
+type TaskDueOfReminderRow struct {
+	DueDate *time.Time
+	DueTime pgtype.Time
+	DueTz   *string
+}
+
+// The due fields of a reminder's task when it fires: the occurrence its
+// deliveries are about (D-66).
+func (q *Queries) TaskDueOfReminder(ctx context.Context, reminderID uuid.UUID) (TaskDueOfReminderRow, error) {
+	row := q.db.QueryRow(ctx, taskDueOfReminder, reminderID)
+	var i TaskDueOfReminderRow
+	err := row.Scan(&i.DueDate, &i.DueTime, &i.DueTz)
+	return i, err
 }

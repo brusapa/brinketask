@@ -116,6 +116,9 @@ func (s *Service) record(ctx context.Context, userID, taskID uuid.UUID, in Compl
 		if err != nil {
 			return err
 		}
+		if err := lockReminders(ctx, q, taskID); err != nil {
+			return err
+		}
 
 		existing, err := q.GetCompletion(ctx, in.CompletionID)
 		switch {
@@ -304,6 +307,9 @@ func (s *Service) Uncomplete(ctx context.Context, userID, taskID, completionID u
 		}
 		if latest != completionID {
 			return conflict("only the latest completion of a task can be undone")
+		}
+		if err := lockReminders(ctx, q, taskID); err != nil {
+			return err
 		}
 
 		task.Status = record.PrevStatus

@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/oapi-codegen/nullable"
 
 	"github.com/brusapa/brinketask/internal/account"
 	"github.com/brusapa/brinketask/internal/clock"
@@ -220,15 +221,15 @@ func TestReminderWithoutDevices(t *testing.T) {
 	}
 }
 
-// D-66: retries after 30 s, 1 min, 2 min, 4 min; the fifth failure is
-// final.
+// D-66: retries after 30 s, 1 min, 2 min, 4 min and 8 min; the sixth
+// failure, that of the fifth retry, is final.
 func TestRetries(t *testing.T) {
 	e := setup(t)
 	e.device(t, "phone")
 	e.task(t, "Flaky", start)
-	e.push.Answer("phone", 500, 503, 500, 500, 500)
+	e.push.Answer("phone", 500, 503, 500, 500, 500, 500)
 
-	waits := []time.Duration{0, 30 * time.Second, time.Minute, 2 * time.Minute, 4 * time.Minute}
+	waits := []time.Duration{0, 30 * time.Second, time.Minute, 2 * time.Minute, 4 * time.Minute, 8 * time.Minute}
 	for i, wait := range waits {
 		e.clock.Advance(wait - time.Second)
 		e.tick(t)
@@ -385,5 +386,212 @@ func TestSchedulerReportsToObserver(t *testing.T) {
 	}
 	if !slices.Equal(rec.outcomes, []string{"retry", "sent"}) {
 		t.Errorf("outcomes = %v", rec.outcomes)
+	}
+}
+
+// D-07: the scheduler holds a reminder when it asks for a seq, and a task
+// write locks its reminders before taking one, so firing a reminder while
+// its task changes deadlocks neither.
+func TestFiringWhileTaskIsPatched(t *testing.T) {
+	e := setup(t)
+	e.device(t, "phone")
+	taskID, _ := e.task(t, "Due now", start)
+	ctx := context.Background()
+	newDue := time.Date(2026, 10, 11, 0, 0, 0, 0, time.UTC)
+
+	release := storagetest.HoldSeqLock(t, e.pool)
+	patchErr := make(chan error, 1)
+	go func() {
+		_, err := e.tasks.PatchTask(ctx, e.user, taskID, tasks.TaskPatch{DueDate: nullable.NewNullableWithValue(newDue)})
+		patchErr <- err
+	}()
+	storagetest.WaitForLockWaiters(t, e.pool, 1)
+	tickErr := make(chan error, 1)
+	go func() { tickErr <- e.scheduler.Tick(ctx) }()
+	// The tick either waits for a seq too, or skips the reminder the patch
+	// holds and ends.
+	waitForTickOrWaiters(t, e, tickErr, 2)
+	release()
+
+	if err := <-patchErr; err != nil {
+		t.Errorf("patch: %v", err)
+	}
+	if err := <-tickErr; err != nil {
+		t.Errorf("tick: %v", err)
+	}
+	e.tick(t)
+	if got := len(e.push.Messages()); got != 1 {
+		t.Errorf("messages = %d, want the reminder once", got)
+	}
+}
+
+// waitForTickOrWaiters returns once n sessions wait for a lock, or once
+// the tick has ended (its error is put back for the caller).
+func waitForTickOrWaiters(t *testing.T, e *env, tickErr chan error, n int) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		select {
+		case err := <-tickErr:
+			tickErr <- err
+			return
+		default:
+		}
+		var waiting int
+		err := e.pool.QueryRow(context.Background(),
+			"SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'").
+			Scan(&waiting)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if waiting >= n {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("the tick neither ended nor waited")
+}
+
+// SPEC section 6: editing a task without touching what its reminders are
+// computed from keeps a reminder that is due and not yet picked up.
+func TestTitleEditKeepsDueReminder(t *testing.T) {
+	e := setup(t)
+	e.device(t, "phone")
+	taskID, reminderID := e.task(t, "Call the plumber", start.Add(time.Second))
+	e.clock.Advance(2 * time.Second) // due, but the next poll is later
+	_, _, _, version := e.reminderState(t, reminderID)
+
+	title := "Call the plumber today"
+	if _, err := e.tasks.PatchTask(context.Background(), e.user, taskID, tasks.TaskPatch{Title: &title}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, after := e.reminderState(t, reminderID); after != version {
+		t.Errorf("a title edit wrote the reminder: version %d, was %d", after, version)
+	}
+	e.tick(t)
+	if got := len(e.push.Messages()); got != 1 {
+		t.Errorf("messages = %d, want the reminder, one second late", got)
+	}
+}
+
+// SPEC section 7, D-32: a browser that moves to another user while a
+// delivery of the previous owner's reminder waits for a retry does not
+// show that reminder; the delivery is skipped.
+func TestReassignedDeviceGetsNoReminderOfPreviousOwner(t *testing.T) {
+	e := setup(t)
+	ctx := context.Background()
+	sub := e.push.NewDevice(t, "shared")
+	if _, _, err := e.devices.Register(ctx, e.user, notify.NewDevice{
+		ID: uuid.New(), Endpoint: sub.Endpoint, P256dh: sub.P256dh, Auth: sub.Auth,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	e.task(t, "Alice secret", start)
+	e.push.Answer("shared", http.StatusServiceUnavailable)
+	e.tick(t) // the first attempt fails; a retry is pending
+
+	// Bob signs in on the same browser, which registers it again.
+	bob, err := account.NewService(e.pool, e.clock).SignIn(ctx, account.Identity{Issuer: "https://id.example.com", Subject: "bob"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := e.devices.Register(ctx, bob, notify.NewDevice{
+		ID: uuid.New(), Endpoint: sub.Endpoint, P256dh: sub.P256dh, Auth: sub.Auth,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	e.clock.Advance(30 * time.Second)
+	e.tick(t)
+	if got := len(e.push.Messages()); got != 0 {
+		t.Errorf("bob's browser received %d message(s) of alice's", got)
+	}
+	if d := e.deliveries(t); d["skipped"] != 1 || len(d) != 1 {
+		t.Errorf("deliveries = %v", d)
+	}
+}
+
+// D-66: a delivery waiting for a retry is skipped, not sent, once it is
+// stale: its device is disabled, its task is done, deleted or moved to
+// another occurrence (whose Complete action would act on the wrong one,
+// D-10), or the server was down for longer than the maximum lateness.
+func TestStaleRetriesAreSkipped(t *testing.T) {
+	today := time.Date(2026, 10, 8, 0, 0, 0, 0, time.UTC)
+	for name, change := range map[string]func(t *testing.T, e *env, taskID uuid.UUID){
+		"recurring task advanced": func(t *testing.T, e *env, taskID uuid.UUID) {
+			if _, err := e.tasks.Complete(context.Background(), e.user, taskID, tasks.CompleteInput{CompletionID: uuid.New(), OccurrenceDueDate: &today}); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"due time changed": func(t *testing.T, e *env, taskID uuid.UUID) {
+			if _, err := e.tasks.PatchTask(context.Background(), e.user, taskID, tasks.TaskPatch{DueTime: nullable.NewNullableWithValue("17:00")}); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"task deleted": func(t *testing.T, e *env, taskID uuid.UUID) {
+			if err := e.tasks.DeleteTask(context.Background(), e.user, taskID); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"device disabled": func(t *testing.T, e *env, _ uuid.UUID) {
+			if _, err := e.pool.Exec(context.Background(), "UPDATE push_subscriptions SET disabled_at = $1", start); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"server down for 13 hours": func(_ *testing.T, e *env, _ uuid.UUID) {
+			e.clock.Advance(13 * time.Hour)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			e := setup(t)
+			ctx := context.Background()
+			e.device(t, "phone")
+			rule, at := "FREQ=DAILY", "09:00"
+			task, _, err := e.tasks.CreateTask(ctx, e.user, tasks.NewTask{
+				ID: uuid.New(), ListID: e.inbox, Title: "Daily", Position: "a", RepeatFrom: "due",
+				DueDate: &today, DueTime: &at, Rrule: &rule,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, _, err := e.tasks.CreateReminder(ctx, e.user, task.ID, tasks.NewReminder{ID: uuid.New(), Kind: "absolute", At: &start}); err != nil {
+				t.Fatal(err)
+			}
+			e.push.Answer("phone", http.StatusServiceUnavailable)
+			e.tick(t) // the first attempt fails
+
+			change(t, e, task.ID)
+			e.clock.Advance(30 * time.Second)
+			e.tick(t)
+			if got := len(e.push.Messages()); got != 0 {
+				t.Errorf("a stale delivery was sent: %d message(s)", got)
+			}
+			if d := e.deliveries(t); d["skipped"] != 1 || len(d) != 1 {
+				t.Errorf("deliveries = %v", d)
+			}
+		})
+	}
+}
+
+// D-66: a retry of a task that did not change carries the occurrence the
+// reminder fired for.
+func TestRetrySendsItsOccurrence(t *testing.T) {
+	e := setup(t)
+	e.device(t, "phone")
+	e.task(t, "Flaky", start)
+	e.push.Answer("phone", http.StatusServiceUnavailable)
+	e.tick(t)
+	e.clock.Advance(30 * time.Second)
+	e.tick(t)
+	messages := e.push.Messages()
+	if len(messages) != 1 {
+		t.Fatalf("messages = %d", len(messages))
+	}
+	var p map[string]any
+	if err := json.Unmarshal(messages[0].Payload, &p); err != nil {
+		t.Fatal(err)
+	}
+	if p["due_date"] != "2026-10-10" {
+		t.Errorf("payload = %v", p)
 	}
 }
