@@ -243,20 +243,23 @@ function DescriptionField({
 }) {
   const { t } = useTranslation();
   const [editing, setEditing] = useState(false);
-  // Set from the task's current description each time editing starts, not
-  // when the component mounts: a sync may have changed it since (D-31).
-  const [text, setText] = useState("");
+  // What the user typed, null while they type nothing, as in TitleField:
+  // an editor left untouched shows the task's current description, also
+  // when a sync changes it while the editor is open (D-31), and saves
+  // nothing when it closes.
+  const [draft, setDraft] = useState<string | null>(null);
 
   if (editing) {
     return (
       <TextField
         className="field"
         aria-label={t("detail.description")}
-        value={text}
-        onChange={setText}
+        value={draft ?? task.description}
+        onChange={setDraft}
         onBlur={() => {
           setEditing(false);
-          if (text !== task.description) onPatch({ description: text });
+          setDraft(null);
+          if (draft !== null && draft !== task.description) onPatch({ description: draft });
         }}
         maxLength={20000}
         autoFocus
@@ -285,7 +288,6 @@ function DescriptionField({
       <Button
         className="link-button"
         onPress={() => {
-          setText(task.description);
           setEditing(true);
         }}
       >

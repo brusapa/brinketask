@@ -235,3 +235,47 @@ test("a refreshed task is not overwritten by the fields it was shown in", async 
   await user.tab();
   expect(server.calls("PATCH", `/tasks/${taskId}`)).toEqual([]);
 });
+
+// D-05, D-31: an editor already open, and left untouched, while a focus
+// refresh brings another device's description shows that description and
+// writes nothing back over it when it closes.
+test("a clean description editor open during a refresh saves nothing", async () => {
+  const { panel, server, user } = await openDetail({ description: "old notes" });
+  await user.click(within(panel).getByRole("button", { name: "Edit description" }));
+  const editor = within(panel).getByRole<HTMLTextAreaElement>("textbox", { name: "Description" });
+  expect(editor.value).toBe("old notes");
+
+  const after = task({
+    id: taskId,
+    list_id: inboxId,
+    title: "Plan holiday",
+    description: "new notes",
+    version: 2,
+  });
+  server.on("GET", "/sync/changes", json(page({ tasks: [after], next_cursor: "c2" })));
+  fireEvent(window, new Event("focus"));
+  // The title field shows the synced title once the refresh is applied.
+  await waitFor(() => {
+    expect(within(panel).getByRole<HTMLTextAreaElement>("textbox", { name: "Title" }).value).toBe(
+      "Plan holiday",
+    );
+  });
+  expect(editor.value).toBe("new notes");
+
+  await user.tab();
+  expect(server.calls("PATCH", `/tasks/${taskId}`)).toEqual([]);
+});
+
+test("a typed description is saved when the editor loses focus", async () => {
+  const { panel, server, user } = await openDetail({ description: "old notes" });
+  await user.click(within(panel).getByRole("button", { name: "Edit description" }));
+  const editor = within(panel).getByRole("textbox", { name: "Description" });
+  await user.clear(editor);
+  await user.type(editor, "packing list");
+  await user.tab();
+  await waitFor(() => {
+    expect(server.calls("PATCH", `/tasks/${taskId}`).map((c) => c.body)).toEqual([
+      { description: "packing list" },
+    ]);
+  });
+});
