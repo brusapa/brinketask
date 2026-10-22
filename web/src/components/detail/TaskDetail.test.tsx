@@ -81,6 +81,30 @@ describe("due date", () => {
     expect(screen.queryByRole("button", { name: "Clear" })).toBeNull();
   });
 
+  // D-26: the way to clear a repeating task's date never leaves its rule
+  // behind: the rule goes first, then the date can be cleared.
+  test("a repeating task's date is cleared after its repetition", async () => {
+    const { panel, server, user } = await openDetail({
+      due_date: "2026-10-12",
+      rrule: "FREQ=DAILY",
+    });
+    await user.click(within(panel).getByRole("button", { name: /^Repeat: / }));
+    const repeat = await screen.findByRole("dialog", { name: "Repeat" });
+    await user.click(within(repeat).getByRole("button", { name: /Daily/ }));
+    await user.click(await screen.findByRole("option", { name: "Does not repeat" }));
+    await user.click(within(repeat).getByRole("button", { name: "Save" }));
+    await within(panel).findByRole("button", { name: "Repeat: Does not repeat" });
+
+    await user.click(within(panel).getByRole("button", { name: /^Due: / }));
+    await user.click(await screen.findByRole("button", { name: "Clear" }));
+    await waitFor(() => {
+      expect(server.calls("PATCH", `/tasks/${taskId}`).map((c) => c.body)).toEqual([
+        { rrule: null },
+        { due_date: null, due_time: null, due_tz: null },
+      ]);
+    });
+  });
+
   // D-26: clearing the date clears the fields that depend on it.
   test("clearing removes date, time and zone in one patch", async () => {
     const { panel, server, user } = await openDetail({
