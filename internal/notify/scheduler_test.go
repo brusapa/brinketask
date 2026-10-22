@@ -221,15 +221,15 @@ func TestReminderWithoutDevices(t *testing.T) {
 	}
 }
 
-// D-66: retries after 30 s, 1 min, 2 min, 4 min; the fifth failure is
-// final.
+// D-66: retries after 30 s, 1 min, 2 min, 4 min and 8 min; the sixth
+// failure, that of the fifth retry, is final.
 func TestRetries(t *testing.T) {
 	e := setup(t)
 	e.device(t, "phone")
 	e.task(t, "Flaky", start)
-	e.push.Answer("phone", 500, 503, 500, 500, 500)
+	e.push.Answer("phone", 500, 503, 500, 500, 500, 500)
 
-	waits := []time.Duration{0, 30 * time.Second, time.Minute, 2 * time.Minute, 4 * time.Minute}
+	waits := []time.Duration{0, 30 * time.Second, time.Minute, 2 * time.Minute, 4 * time.Minute, 8 * time.Minute}
 	for i, wait := range waits {
 		e.clock.Advance(wait - time.Second)
 		e.tick(t)

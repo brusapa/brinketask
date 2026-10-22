@@ -23,11 +23,12 @@ const (
 	statusSkipped = "skipped"
 )
 
-// maxAttempts is how often a delivery is tried before it is failed (D-66).
-const maxAttempts = 5
+// maxAttempts is how often a delivery is tried before it is failed: the
+// first attempt and up to 5 retries (D-66, SPEC section 6).
+const maxAttempts = 6
 
 // firstRetry is the wait after the first failure; each later one doubles:
-// 30 s, 1 min, 2 min, 4 min (D-66).
+// 30 s, 1 min, 2 min, 4 min, 8 min (D-66).
 const firstRetry = 30 * time.Second
 
 // batch is how many reminders one transaction fires.
