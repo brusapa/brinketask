@@ -71,7 +71,8 @@ func TestChecklistItems(t *testing.T) {
 }
 
 // D-45: deleting a task leaves its items alone; while it is deleted they
-// cannot be touched, and they come back with it.
+// cannot be touched, and they come back with it, written again with their
+// content unchanged (a new version, so other devices sync them).
 func TestChecklistOfDeletedTask(t *testing.T) {
 	a := newTestApp(t)
 	alice := a.signUp(t, "alice")
@@ -87,7 +88,7 @@ func TestChecklistOfDeletedTask(t *testing.T) {
 		http.StatusNotFound, ProblemCodeNotFound)
 
 	restored := decode[Task](t, a.call(t, alice, http.MethodPost, taskPath+"/restore", ""), http.StatusOK)
-	if items := *restored.ChecklistItems; len(items) != 1 || items[0].Id != item.Id || *items[0].Version != 1 {
+	if items := *restored.ChecklistItems; len(items) != 1 || items[0].Id != item.Id || items[0].Title != "Passport" || items[0].IsDone || *items[0].Version != 2 {
 		t.Errorf("checklist after restore = %+v", items)
 	}
 }

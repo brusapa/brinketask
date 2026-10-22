@@ -157,6 +157,35 @@ func (q *Queries) LockDoneItemIDsOfTask(ctx context.Context, taskID uuid.UUID) (
 	return items, nil
 }
 
+const lockLiveItemIDsOfTasks = `-- name: LockLiveItemIDsOfTasks :many
+SELECT id FROM checklist_items
+WHERE task_id = ANY($1::uuid[]) AND deleted_at IS NULL
+ORDER BY id
+FOR UPDATE
+`
+
+// The live items of several tasks, locked before a seq is taken: a
+// restore writes them again (D-45).
+func (q *Queries) LockLiveItemIDsOfTasks(ctx context.Context, taskIds []uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, lockLiveItemIDsOfTasks, taskIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockTaskOfChecklistItem = `-- name: LockTaskOfChecklistItem :exec
 SELECT t.id FROM tasks t
 JOIN checklist_items c ON c.task_id = t.id
@@ -175,6 +204,29 @@ type LockTaskOfChecklistItemParams struct {
 // write of the task and a write of one of its items cannot deadlock.
 func (q *Queries) LockTaskOfChecklistItem(ctx context.Context, arg LockTaskOfChecklistItemParams) error {
 	_, err := q.db.Exec(ctx, lockTaskOfChecklistItem, arg.UserID, arg.ID)
+	return err
+}
+
+const rewriteChecklistItems = `-- name: RewriteChecklistItems :exec
+UPDATE checklist_items c
+SET version = c.version + 1, seq = v.seq, updated_at = $1
+FROM (SELECT unnest($2::uuid[]) AS id, unnest($3::bigint[]) AS seq) AS v
+WHERE c.id = v.id
+`
+
+type RewriteChecklistItemsParams struct {
+	Now  time.Time
+	Ids  []uuid.UUID
+	Seqs []int64
+}
+
+// Writes items again, content unchanged, each with a new version and its
+// own seq: a restored task's items reach the devices that synced while it
+// was deleted (D-45). ids and seqs are parallel arrays.
+// Two unnest calls in one SELECT list advance together, pairing ids[i]
+// with seqs[i].
+func (q *Queries) RewriteChecklistItems(ctx context.Context, arg RewriteChecklistItemsParams) error {
+	_, err := q.db.Exec(ctx, rewriteChecklistItems, arg.Now, arg.Ids, arg.Seqs)
 	return err
 }
 

@@ -68,10 +68,22 @@ JOIN list_members m ON m.list_id = t.list_id AND m.user_id = @user_id
 WHERE r.id = @id
 FOR SHARE OF t;
 
--- name: LockLiveRemindersOfTasks :exec
+-- name: LockLiveRemindersOfTasks :many
 -- The live reminders of several tasks, locked before a seq is taken:
--- deleting or restoring a list recomputes them after writing its tasks.
+-- deleting or restoring a list recomputes them after writing its tasks,
+-- and a restore writes them again (D-67).
 SELECT id FROM reminders
 WHERE task_id = ANY(@task_ids::uuid[]) AND deleted_at IS NULL
 ORDER BY id
 FOR UPDATE;
+
+-- name: RewriteReminders :exec
+-- Writes reminders again, content unchanged, each with a new version and
+-- its own seq: a restored task's reminders reach the devices that synced
+-- while it was deleted (D-67). ids and seqs are parallel arrays.
+UPDATE reminders r
+SET version = r.version + 1, seq = v.seq, updated_at = @now
+-- Two unnest calls in one SELECT list advance together, pairing ids[i]
+-- with seqs[i].
+FROM (SELECT unnest(@ids::uuid[]) AS id, unnest(@seqs::bigint[]) AS seq) AS v
+WHERE r.id = v.id;

@@ -381,11 +381,15 @@ func (s *Service) RestoreTask(ctx context.Context, userID, id uuid.UUID) (Task, 
 		if !restorable(*current.DeletedAt, s.now()) {
 			return conflict("the task was deleted more than 30 days ago")
 		}
-		if err := lockReminders(ctx, q, id); err != nil {
+		children, err := lockRestoredChildren(ctx, q, []uuid.UUID{id})
+		if err != nil {
 			return err
 		}
 		current.DeletedAt = nil
 		if err := s.writeTask(ctx, q, &current); err != nil {
+			return err
+		}
+		if err := s.rewriteChildren(ctx, q, children); err != nil {
 			return err
 		}
 		if err := s.recompute(ctx, q, userID, current, false); err != nil {
@@ -475,6 +479,53 @@ func checkChecklistIDs(items []NewChecklistItem) []FieldError {
 func lockReminders(ctx context.Context, q *dbgen.Queries, taskID uuid.UUID) error {
 	_, err := q.LockLiveRemindersOfTask(ctx, taskID)
 	return err
+}
+
+// restoredChildren are the live checklist items and reminders of tasks
+// being restored.
+type restoredChildren struct {
+	items     []uuid.UUID
+	reminders []uuid.UUID
+}
+
+// lockRestoredChildren locks the live children of tasks about to be
+// restored, before the restore takes a seq (see lockReminders).
+func lockRestoredChildren(ctx context.Context, q *dbgen.Queries, taskIDs []uuid.UUID) (restoredChildren, error) {
+	reminders, err := q.LockLiveRemindersOfTasks(ctx, taskIDs)
+	if err != nil {
+		return restoredChildren{}, err
+	}
+	items, err := q.LockLiveItemIDsOfTasks(ctx, taskIDs)
+	if err != nil {
+		return restoredChildren{}, err
+	}
+	return restoredChildren{items: items, reminders: reminders}, nil
+}
+
+// rewriteChildren writes the children of restored tasks again, content
+// unchanged, each with a new version and seq (D-45, D-67). Their last
+// write may be older than the cursor of a device whose full sync ran
+// while the task was deleted, and a full sync leaves out the children of
+// deleted tasks; without a new seq that device would never get them.
+func (s *Service) rewriteChildren(ctx context.Context, q *dbgen.Queries, c restoredChildren) error {
+	now := s.now()
+	if len(c.items) > 0 {
+		seqs, err := reserveSeqs(ctx, q, len(c.items))
+		if err != nil {
+			return err
+		}
+		if err := q.RewriteChecklistItems(ctx, dbgen.RewriteChecklistItemsParams{Ids: c.items, Seqs: seqs, Now: now}); err != nil {
+			return err
+		}
+	}
+	if len(c.reminders) > 0 {
+		seqs, err := reserveSeqs(ctx, q, len(c.reminders))
+		if err != nil {
+			return err
+		}
+		return q.RewriteReminders(ctx, dbgen.RewriteRemindersParams{Ids: c.reminders, Seqs: seqs, Now: now})
+	}
+	return nil
 }
 
 // writeTask stores a changed task: one more version and a new seq (D-07).
